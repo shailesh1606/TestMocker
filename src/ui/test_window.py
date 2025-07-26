@@ -135,7 +135,7 @@ class TestWindow(QWidget):
             self.timer.stop()
             self.disable_test_ui()
         else:
-            self.timer_label.setText(f"Time left: {self.time_left.toString('mm:ss')}")
+            self.timer_label.setText(f"Timleft: {self.time_left.toString('hh:mm:ss')}")
             self.time_left = self.time_left.addSecs(-1)
 
     def disable_test_ui(self):
