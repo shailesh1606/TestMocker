@@ -8,7 +8,7 @@ import fitz  # PyMuPDF
 
 STATE_COLORS = {
     "not_visited": "#bdbdbd",      # grey
-    "visited" : "#f9f9f9",         #white
+    "current" : "#f9f9f9",         #white
     "not_answered": "#e57373",     # red
     "answered": "#66bb6a",         # green
     "review": "#7e57c2",           # purple
@@ -175,8 +175,8 @@ class TestWindow(QWidget):
         self.save_current_answer()
         self.current_question = idx
         # Mark visited if not visited yet
-        if self.question_states[idx] == "not_visited":
-            self.question_states[idx] = "visited"
+        #if self.question_states[idx] == "not_visited":
+            #self.question_states[idx] = "visited"
         self.update_question_ui()
 
     def start_timer(self):
