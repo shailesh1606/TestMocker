@@ -1,11 +1,18 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout, QRadioButton,
-    QPushButton, QButtonGroup, QSizePolicy, QGroupBox
+    QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
 import fitz  # PyMuPDF
 
+STATE_COLORS = {
+    "not_visited": "#bdbdbd",      # grey
+    "visited" : "#f9f9f9",         #white
+    "not_answered": "#e57373",     # red
+    "answered": "#66bb6a",         # green
+    "review": "#7e57c2",           # purple
+}
 class TestWindow(QWidget):
     def __init__(self, pdf_path, time_limit=60, num_questions=10):
         super().__init__()
@@ -13,6 +20,8 @@ class TestWindow(QWidget):
         self.num_questions = num_questions
         self.current_question = 0
         self.answers = [None] * num_questions  # Store user answers
+        self.question_states = ["not_visited"] * self.num_questions  # Tracks question status: 'not_visited', 'answered', 'not_answered', 'review'
+        self.review_flags = [False] * self.num_questions             # Marks if question is flagged for review
 
         self.setWindowTitle('Take Test')
         self.setGeometry(150, 150, 1200, 800)
@@ -68,6 +77,42 @@ class TestWindow(QWidget):
         # --- Right: Question/Answer UI ---
         right_layout = QVBoxLayout()
         right_layout.setSpacing(20)
+
+        # --- Question palette (JEE Mains style) ---
+        self.palette_box = QGroupBox("Question Palette")
+        self.palette_box.setFont(QFont("Arial", 11, QFont.Bold))
+        palette_vbox = QVBoxLayout()
+        self.palette_grid = QGridLayout()
+        self.question_palette = []
+        questions_per_row = 5  # You can adjust this number
+
+        for i in range(self.num_questions):
+            btn = QPushButton(str(i + 1))
+            btn.setCheckable(True)
+            btn.setFixedSize(40, 36)
+            btn.setFont(QFont("Arial", 12, QFont.Bold))
+            btn.clicked.connect(lambda checked, idx=i: self.go_to_question(idx))  # Jump to question on click
+            self.palette_grid.addWidget(btn, i // questions_per_row, i % questions_per_row)
+            self.question_palette.append(btn)
+
+        palette_vbox.addLayout(self.palette_grid)
+
+        # Add a legend for colors
+        legend = QLabel(
+            "● <span style='color:#bdbdbd'>Not Visited</span>   "
+            "● <span style='color:#e57373'>Not Answered</span>   "
+            "● <span style='color:#66bb6a'>Answered</span>   "
+            "● <span style='color:#7e57c2'>Review</span>"
+        )
+        legend.setFont(QFont("Arial", 10))
+        legend.setTextFormat(Qt.RichText)
+        palette_vbox.addWidget(legend)
+
+        palette_vbox.addStretch()
+        self.palette_box.setLayout(palette_vbox)
+
+        # Add palette_box to the right_layout at the top
+        right_layout.insertWidget(0, self.palette_box)
 
         # Timer display
         self.timer_label = QLabel()
@@ -126,6 +171,14 @@ class TestWindow(QWidget):
         self.update_question_ui()
         self.update_timer()  # Show initial time
 
+    def go_to_question(self, idx):
+        self.save_current_answer()
+        self.current_question = idx
+        # Mark visited if not visited yet
+        if self.question_states[idx] == "not_visited":
+            self.question_states[idx] = "visited"
+        self.update_question_ui()
+
     def start_timer(self):
         self.timer.start(1000)  # 1 second interval
 
@@ -158,6 +211,17 @@ class TestWindow(QWidget):
         self.prev_button.setEnabled(self.current_question > 0)
         self.next_button.setEnabled(self.current_question < self.num_questions - 1)
 
+        for idx, btn in enumerate(self.question_palette):
+            color = STATE_COLORS[self.question_states[idx]]
+            border_width = "2px" if idx == self.current_question else "1px"
+            border_color = "#000" if idx == self.current_question else "#888"
+            btn.setStyleSheet(
+                f"background-color: {color}; border-radius: 15px; font-weight: bold; "
+                f"border-width: {border_width}; border-style: solid; border-color: {border_color};"
+            )
+            btn.setChecked(idx == self.current_question)
+
+
     def next_question(self):
         self.save_current_answer()
         if self.current_question < self.num_questions - 1:
@@ -172,4 +236,12 @@ class TestWindow(QWidget):
 
     def save_current_answer(self):
         checked_id = self.button_group.checkedId()
-        self.answers[self.current_question] = checked_id if checked_id != -1 else None
+        if checked_id != -1:
+            self.answers[self.current_question] = checked_id
+            # Update state unless it's marked for review
+            if not self.review_flags[self.current_question]:
+                self.question_states[self.current_question] = "answered"
+        else:
+            self.answers[self.current_question] = None
+            if not self.review_flags[self.current_question]:
+                self.question_states[self.current_question] = "not_answered"
