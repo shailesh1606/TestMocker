@@ -9,7 +9,7 @@ from ui.test_window import TestWindow
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Computer-Based Test Application")
+        self.setWindowTitle("TestMocker")
         self.setGeometry(100, 100, 600, 400)
         self.setWindowIcon(QIcon())  # You can set a custom icon here
 
@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(40, 30, 40, 30)
         main_layout.setSpacing(25)
 
-        self.label = QLabel("Welcome to the Computer-Based Test Application", self)
+        self.label = QLabel("Welcome to the TestMocker", self)
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setFont(QFont("Arial", 16, QFont.Bold))
         main_layout.addWidget(self.label)
