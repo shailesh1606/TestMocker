@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout, QRadioButton,
     QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout, QMessageBox,
-    QSplitter, QWidget
+    QSplitter, QWidget, QSlider
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
@@ -72,6 +72,23 @@ class TestWindow(QWidget):
             scroll.setMinimumWidth(500)
             scroll.setStyleSheet("background: #f5f5f5; border: 1px solid #bdbdbd;")
             pdf_layout.addWidget(scroll)
+
+            # Zoom slider
+            self.zoom_slider = QSlider(Qt.Horizontal)
+            self.zoom_slider.setMinimum(10)
+            self.zoom_slider.setMaximum(300)
+            self.zoom_slider.setValue(150)
+            self.zoom_slider.setTickInterval(10)
+            self.zoom_slider.setTickPosition(QSlider.TicksBelow)
+            self.zoom_slider.setToolTip("Zoom")
+            zoom_label = QLabel("Zoom:")
+            zoom_label.setFont(QFont("Arial", 10, QFont.Bold))
+
+            pdf_layout.addWidget(zoom_label)
+            pdf_layout.addWidget(self.zoom_slider)
+
+            self.pdf_vbox = pdf_vbox  # Save reference for later
+            self.pdf_path = pdf_path  # Save reference for later
 
         # --------------------------------------
 
@@ -227,6 +244,12 @@ class TestWindow(QWidget):
         self.update_question_ui()
         self.update_timer()  # Show initial time
 
+        # Connect the slider to re-render PDF pages
+        self.zoom_slider.valueChanged.connect(lambda val: self.render_pdf_pages(val))
+
+        # Initial render
+        self.render_pdf_pages(self.zoom_slider.value())
+
     def save_and_next(self):
         self.save_current_answer()
         #set review flag to False
@@ -359,3 +382,25 @@ class TestWindow(QWidget):
             self.disable_test_ui()
             # You can add logic here to process/store answers, show results, etc.
             QMessageBox.information(self, "Test Submitted", "Your test has been submitted successfully!")
+
+    def render_pdf_pages(self, zoom_factor):
+        # Remove old widgets
+        for i in reversed(range(self.pdf_vbox.count())):
+            widget = self.pdf_vbox.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        if not self.pdf_path:
+            return
+        doc = fitz.open(self.pdf_path)
+        for page_num in range(doc.page_count):
+            page = doc.load_page(page_num)
+            matrix = fitz.Matrix(zoom_factor / 100, zoom_factor / 100)
+            pix = page.get_pixmap(matrix=matrix)
+            img_format = QImage.Format_RGBA8888 if pix.alpha else QImage.Format_RGB888
+            img = QImage(bytes(pix.samples), pix.width, pix.height, pix.stride, img_format)
+            lbl = QLabel()
+            lbl.setPixmap(QPixmap.fromImage(img))
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.pdf_vbox.addWidget(lbl)
+        doc.close()
