@@ -220,6 +220,7 @@ class TestWindow(QWidget):
         self.save_current_answer()
         self.review_flags[self.current_question] = True
         self.question_states[self.current_question] = "review"
+        self.update_question_ui()
         '''
         # Move to next question
         if self.current_question < self.num_questions - 1:
@@ -228,26 +229,33 @@ class TestWindow(QWidget):
         '''
 
     def mark_for_review_and_next(self):
+        self.save_current_answer()
         self.review_flags[self.current_question] = True
         self.question_states[self.current_question] = "review"
         self.update_question_ui()
-        # Do *not* save answer if none selected!
         if self.current_question < self.num_questions - 1:
             self.current_question += 1
             self.update_question_ui()
 
     def clear_response(self):
-        self.answers[self.current_question] = None
-        self.review_flags[self.current_question] = False
-        self.question_states[self.current_question] = "not_answered"
-        self.update_question_ui()
+        self.button_group.setExclusive(False)
+        for btn in self.options:
+            btn.setChecked(False)
+        self.button_group.setExclusive(True)
+        self.save_current_answer()
 
     def go_to_question(self, idx):
         self.save_current_answer()
+        #set review flag to False
+        self.review_flags[self.current_question] = False
+        
+        #set question state based on answer
+        if not self.question_states[self.current_question] == "review":
+            if self.answers[self.current_question] is not None:
+                self.question_states[self.current_question] = "answered"
+            else:
+                self.question_states[self.current_question] = "not_answered"
         self.current_question = idx
-        # Mark visited if not visited yet
-        #if self.question_states[idx] == "not_visited":
-            #self.question_states[idx] = "visited"
         self.update_question_ui()
 
     def start_timer(self):
