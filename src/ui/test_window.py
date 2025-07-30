@@ -313,6 +313,7 @@ class TestWindow(QWidget):
         if self.time_left == QTime(0, 0, 0):
             self.timer_label.setText("Time's up!")
             self.timer.stop()
+            self.submit_test(auto=True)  # Auto submit when time is up
             self.disable_test_ui()
         else:
             self.timer_label.setText(f"Timleft: {self.time_left.toString('hh:mm:ss')}")
@@ -369,19 +370,24 @@ class TestWindow(QWidget):
         else:
             self.answers[self.current_question] = None
 
-    def submit_test(self):
-        reply = QMessageBox.question(
-            self,
-            "Submit Test",
-            "Are you sure you want to submit the test?\nYou will not be able to change your answers after submission.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            self.timer.stop()
+    def submit_test(self, auto=False):
+        if auto:
+            QMessageBox.information(self, "Test Auto-Submitted", "Time is up! Your test has been auto-submitted.")
             self.disable_test_ui()
-            # You can add logic here to process/store answers, show results, etc.
-            QMessageBox.information(self, "Test Submitted", "Your test has been submitted successfully!")
+            # Add logic to process/store answers here
+        else:
+            reply = QMessageBox.question(
+                self,
+                "Submit Test",
+                "Are you sure you want to submit the test?\nYou will not be able to change your answers after submission.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.timer.stop()
+                self.disable_test_ui()
+                # Add logic to process/store answers here
+                QMessageBox.information(self, "Test Submitted", "Your test has been submitted successfully!")
 
     def render_pdf_pages(self, zoom_factor):
         # Remove old widgets
