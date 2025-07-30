@@ -150,6 +150,7 @@ class TestWindow(QWidget):
         options_box.setLayout(options_layout)
         right_layout.addWidget(options_box)
 
+        '''
         # Navigation buttons
         nav_layout = QHBoxLayout()
         self.prev_button = QPushButton("← Previous")
@@ -164,12 +165,80 @@ class TestWindow(QWidget):
         self.next_button.clicked.connect(self.next_question)
         nav_layout.addWidget(self.next_button)
         right_layout.addLayout(nav_layout)
+        '''
+        #Action buttons for navigation
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(8)
+
+        self.save_next_btn = QPushButton("SAVE && NEXT")
+        self.save_next_btn.setStyleSheet("background-color: #43a047; color: white; font-weight: bold; padding: 8px 18px;")
+        self.save_next_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        self.save_next_btn.clicked.connect(self.save_and_next)
+        actions_layout.addWidget(self.save_next_btn)
+
+        self.save_mark_review_btn = QPushButton("SAVE && MARK FOR REVIEW")
+        self.save_mark_review_btn.setStyleSheet("background-color: #ffd600; color: #333; font-weight: bold; padding: 8px 18px;")
+        self.save_mark_review_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        self.save_mark_review_btn.clicked.connect(self.save_and_mark_for_review)
+        actions_layout.addWidget(self.save_mark_review_btn)
+
+        self.mark_review_next_btn = QPushButton("MARK FOR REVIEW && NEXT")
+        self.mark_review_next_btn.setStyleSheet("background-color: #512da8; color: white; font-weight: bold; padding: 8px 18px;")
+        self.mark_review_next_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        self.mark_review_next_btn.clicked.connect(self.mark_for_review_and_next)
+        actions_layout.addWidget(self.mark_review_next_btn)
+
+        self.clear_response_btn = QPushButton("CLEAR RESPONSE")
+        self.clear_response_btn.setStyleSheet("background-color: #e53935; color: white; font-weight: bold; padding: 8px 18px;")
+        self.clear_response_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        self.clear_response_btn.clicked.connect(self.clear_response)
+        actions_layout.addWidget(self.clear_response_btn)
+
+        right_layout.addLayout(actions_layout)
 
         right_layout.addStretch()
         main_layout.addLayout(right_layout, 1)
         self.setLayout(main_layout)
         self.update_question_ui()
         self.update_timer()  # Show initial time
+
+    def save_and_next(self):
+        self.save_current_answer()
+        # Mark as answered if not review
+        self.review_flags[self.current_question] = False
+        if self.question_states[self.current_question] == "not_visited":
+            self.question_states[self.current_question] = (
+                "answered" if self.answers[self.current_question] is not None else "not_answered"
+            )
+        if self.current_question < self.num_questions - 1:
+            self.current_question += 1
+        self.update_question_ui()
+
+    def save_and_mark_for_review(self):
+        self.save_current_answer()
+        self.review_flags[self.current_question] = True
+        self.question_states[self.current_question] = "review"
+        '''
+        # Move to next question
+        if self.current_question < self.num_questions - 1:
+            self.current_question += 1
+            self.update_question_ui()
+        '''
+
+    def mark_for_review_and_next(self):
+        self.review_flags[self.current_question] = True
+        self.question_states[self.current_question] = "review"
+        self.update_question_ui()
+        # Do *not* save answer if none selected!
+        if self.current_question < self.num_questions - 1:
+            self.current_question += 1
+            self.update_question_ui()
+
+    def clear_response(self):
+        self.answers[self.current_question] = None
+        self.review_flags[self.current_question] = False
+        self.question_states[self.current_question] = "not_answered"
+        self.update_question_ui()
 
     def go_to_question(self, idx):
         self.save_current_answer()
@@ -194,8 +263,8 @@ class TestWindow(QWidget):
     def disable_test_ui(self):
         for btn in self.options:
             btn.setEnabled(False)
-        self.prev_button.setEnabled(False)
-        self.next_button.setEnabled(False)
+        #self.prev_button.setEnabled(False)
+        #self.next_button.setEnabled(False)
 
     def update_question_ui(self):
         self.question_number_label.setText(f"Question {self.current_question + 1} of {self.num_questions}")
@@ -208,9 +277,10 @@ class TestWindow(QWidget):
         else:
             for i, btn in enumerate(self.options):
                 btn.setChecked(selected == i)
-        self.prev_button.setEnabled(self.current_question > 0)
-        self.next_button.setEnabled(self.current_question < self.num_questions - 1)
+        #self.prev_button.setEnabled(self.current_question > 0)
+        #self.next_button.setEnabled(self.current_question < self.num_questions - 1)
 
+        #set question palette button styles
         for idx, btn in enumerate(self.question_palette):
             color = STATE_COLORS[self.question_states[idx]]
             border_width = "2px" if idx == self.current_question else "1px"
