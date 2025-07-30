@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout, QRadioButton,
-    QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout, QMessageBox
+    QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout, QMessageBox,
+    QSplitter, QWidget
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
@@ -71,7 +72,7 @@ class TestWindow(QWidget):
             scroll.setMinimumWidth(500)
             scroll.setStyleSheet("background: #f5f5f5; border: 1px solid #bdbdbd;")
             pdf_layout.addWidget(scroll)
-        main_layout.addLayout(pdf_layout, 2)
+
         # --------------------------------------
 
         # --- Right: Question/Answer UI ---
@@ -167,45 +168,61 @@ class TestWindow(QWidget):
         right_layout.addLayout(nav_layout)
         '''
         #Action buttons for navigation
-        actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(8)
+        actions_layout_top = QHBoxLayout()
+        actions_layout_top.setSpacing(8)
 
         self.save_next_btn = QPushButton("SAVE && NEXT")
         self.save_next_btn.setStyleSheet("background-color: #43a047; color: white; font-weight: bold; padding: 8px 18px;")
         self.save_next_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.save_next_btn.clicked.connect(self.save_and_next)
-        actions_layout.addWidget(self.save_next_btn)
+        actions_layout_top.addWidget(self.save_next_btn)
 
         self.save_mark_review_btn = QPushButton("SAVE && MARK FOR REVIEW")
         self.save_mark_review_btn.setStyleSheet("background-color: #ffd600; color: #333; font-weight: bold; padding: 8px 18px;")
         self.save_mark_review_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.save_mark_review_btn.clicked.connect(self.save_and_mark_for_review)
-        actions_layout.addWidget(self.save_mark_review_btn)
+        actions_layout_top.addWidget(self.save_mark_review_btn)
+
+        right_layout.addLayout(actions_layout_top)
+
+        actions_layout_bottom = QHBoxLayout()
+        actions_layout_bottom.setSpacing(8)
 
         self.mark_review_next_btn = QPushButton("MARK FOR REVIEW && NEXT")
         self.mark_review_next_btn.setStyleSheet("background-color: #512da8; color: white; font-weight: bold; padding: 8px 18px;")
         self.mark_review_next_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.mark_review_next_btn.clicked.connect(self.mark_for_review_and_next)
-        actions_layout.addWidget(self.mark_review_next_btn)
+        actions_layout_bottom.addWidget(self.mark_review_next_btn)
 
         self.clear_response_btn = QPushButton("CLEAR RESPONSE")
         self.clear_response_btn.setStyleSheet("background-color: #e53935; color: white; font-weight: bold; padding: 8px 18px;")
         self.clear_response_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.clear_response_btn.clicked.connect(self.clear_response)
-        actions_layout.addWidget(self.clear_response_btn)
+        actions_layout_bottom.addWidget(self.clear_response_btn)
 
-        # --- Add submit button ---
         self.submit_btn = QPushButton("SUBMIT")
         self.submit_btn.setStyleSheet("background-color: #1976d2; color: white; font-weight: bold; padding: 8px 18px;")
         self.submit_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.submit_btn.clicked.connect(self.submit_test)
-        actions_layout.addWidget(self.submit_btn)
-        # ------------------------
+        actions_layout_bottom.addWidget(self.submit_btn)
 
-        right_layout.addLayout(actions_layout)
+        right_layout.addLayout(actions_layout_bottom)
 
         right_layout.addStretch()
-        main_layout.addLayout(right_layout, 1)
+
+        # --- Add layouts to a splitter for adjustable space ---
+        pdf_container = QWidget()
+        pdf_container.setLayout(pdf_layout)
+        right_container = QWidget()
+        right_container.setLayout(right_layout)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(pdf_container)
+        splitter.addWidget(right_container)
+        splitter.setSizes([700, 200])  # Initial sizes, adjust as needed
+
+        main_layout.addWidget(splitter)
+
         self.setLayout(main_layout)
         self.update_question_ui()
         self.update_timer()  # Show initial time
