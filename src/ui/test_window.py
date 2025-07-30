@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout, QRadioButton,
-    QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout
+    QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout, QMessageBox
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
@@ -194,6 +194,14 @@ class TestWindow(QWidget):
         self.clear_response_btn.clicked.connect(self.clear_response)
         actions_layout.addWidget(self.clear_response_btn)
 
+        # --- Add submit button ---
+        self.submit_btn = QPushButton("SUBMIT")
+        self.submit_btn.setStyleSheet("background-color: #1976d2; color: white; font-weight: bold; padding: 8px 18px;")
+        self.submit_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        self.submit_btn.clicked.connect(self.submit_test)
+        actions_layout.addWidget(self.submit_btn)
+        # ------------------------
+
         right_layout.addLayout(actions_layout)
 
         right_layout.addStretch()
@@ -320,3 +328,17 @@ class TestWindow(QWidget):
             self.answers[self.current_question] = checked_id
         else:
             self.answers[self.current_question] = None
+
+    def submit_test(self):
+        reply = QMessageBox.question(
+            self,
+            "Submit Test",
+            "Are you sure you want to submit the test?\nYou will not be able to change your answers after submission.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.timer.stop()
+            self.disable_test_ui()
+            # You can add logic here to process/store answers, show results, etc.
+            QMessageBox.information(self, "Test Submitted", "Your test has been submitted successfully!")
