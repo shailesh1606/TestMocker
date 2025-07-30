@@ -204,12 +204,14 @@ class TestWindow(QWidget):
 
     def save_and_next(self):
         self.save_current_answer()
-        # Mark as answered if not review
+        #set review flag to False
         self.review_flags[self.current_question] = False
-        if self.question_states[self.current_question] == "not_visited":
-            self.question_states[self.current_question] = (
-                "answered" if self.answers[self.current_question] is not None else "not_answered"
-            )
+        
+        #set question state based on answer
+        if self.answers[self.current_question] is not None:
+            self.question_states[self.current_question] = "answered"
+        else:
+            self.question_states[self.current_question] = "not_answered"
         if self.current_question < self.num_questions - 1:
             self.current_question += 1
         self.update_question_ui()
@@ -308,10 +310,5 @@ class TestWindow(QWidget):
         checked_id = self.button_group.checkedId()
         if checked_id != -1:
             self.answers[self.current_question] = checked_id
-            # Update state unless it's marked for review
-            if not self.review_flags[self.current_question]:
-                self.question_states[self.current_question] = "answered"
         else:
             self.answers[self.current_question] = None
-            if not self.review_flags[self.current_question]:
-                self.question_states[self.current_question] = "not_answered"
