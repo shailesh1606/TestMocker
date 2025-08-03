@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
 import fitz  # PyMuPDF
+from ui.results_window import ResultsWindow
 
 STATE_COLORS = {
     "not_visited": "#bdbdbd",      # grey
@@ -371,10 +372,11 @@ class TestWindow(QWidget):
             self.answers[self.current_question] = None
 
     def submit_test(self, auto=False):
+        # Save current answer before submitting
+        self.save_current_answer()
+        
         if auto:
             QMessageBox.information(self, "Test Auto-Submitted", "Time is up! Your test has been auto-submitted.")
-            self.disable_test_ui()
-            # Add logic to process/store answers here
         else:
             reply = QMessageBox.question(
                 self,
@@ -383,11 +385,26 @@ class TestWindow(QWidget):
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
-            if reply == QMessageBox.Yes:
-                self.timer.stop()
-                self.disable_test_ui()
-                # Add logic to process/store answers here
-                QMessageBox.information(self, "Test Submitted", "Your test has been submitted successfully!")
+            if reply != QMessageBox.Yes:
+                return
+        
+        self.timer.stop()
+        self.disable_test_ui()
+        
+        # Calculate time taken
+        time_taken = self.time_limit - (self.time_left.hour() * 60 + self.time_left.minute())
+        
+        # Show results window
+        self.results_window = ResultsWindow(
+            answers=self.answers,
+            correct_answers=None,  # You can pass actual correct answers here
+            time_taken=time_taken,
+            total_time=self.time_limit
+        )
+        self.results_window.show()
+        
+        # Close test window
+        self.close()
 
     def render_pdf_pages(self, zoom_factor):
         # Remove old widgets
