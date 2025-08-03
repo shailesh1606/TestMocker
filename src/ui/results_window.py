@@ -112,10 +112,12 @@ class ResultsWindow(QWidget):
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
     
-    def format_time(self, minutes):
-        hours = minutes // 60
-        mins = minutes % 60
+    def format_time(self, seconds):
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        
         if hours > 0:
-            return f"{hours:02d}:{mins:02d}:00"
+            return f"{hours:02d}:{minutes:02d}:{secs:02d}"
         else:
-            return f"{mins:02d}:00"
+            return f"{minutes:02d}:{secs:02d}"

@@ -387,19 +387,21 @@ class TestWindow(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
-        
+    
         self.timer.stop()
         self.disable_test_ui()
         
-        # Calculate time taken
-        time_taken = self.time_limit - (self.time_left.hour() * 60 + self.time_left.minute())
+        # Calculate time taken correctly (in seconds)
+        initial_time_seconds = self.time_limit * 60  # Convert minutes to seconds
+        remaining_time_seconds = self.time_left.hour() * 3600 + self.time_left.minute() * 60 + self.time_left.second()
+        time_taken_seconds = initial_time_seconds - remaining_time_seconds
         
         # Show results window
         self.results_window = ResultsWindow(
             answers=self.answers,
             correct_answers=None,  # You can pass actual correct answers here
-            time_taken=time_taken,
-            total_time=self.time_limit
+            time_taken=time_taken_seconds,
+            total_time=initial_time_seconds
         )
         self.results_window.show()
         
