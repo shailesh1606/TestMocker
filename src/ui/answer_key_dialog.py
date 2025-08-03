@@ -40,7 +40,7 @@ class AnswerKeyDialog(QDialog):
         method_layout = QVBoxLayout()
         
         # Manual method (recommended)
-        manual_box = QGroupBox("✅ Manual Entry (Recommended)")
+        manual_box = QGroupBox("Manual Entry (Recommended)")
         manual_box.setStyleSheet("QGroupBox { font-weight: bold; color: #43a047; }")
         manual_layout = QVBoxLayout()
         manual_desc = QLabel("• Enter answers manually\n• 100% accurate\n• Quick and reliable")
@@ -67,7 +67,7 @@ class AnswerKeyDialog(QDialog):
         manual_box.setLayout(manual_layout)
         
         # Auto extract method
-        auto_box = QGroupBox("🤖 Auto Extract (Experimental)")
+        auto_box = QGroupBox("Auto Extract (Experimental)")
         auto_box.setStyleSheet("QGroupBox { font-weight: bold; color: #ff9800; }")
         auto_layout = QVBoxLayout()
         auto_desc = QLabel("• Extract from answer key PDF\n• May have accuracy issues\n• Requires OpenAI API")
@@ -100,7 +100,7 @@ class AnswerKeyDialog(QDialog):
         
         # Skip option
         skip_layout = QHBoxLayout()
-        skip_btn = QPushButton("Skip (Show Basic Results)")
+        skip_btn = QPushButton("Skip (Do not show results)")
         skip_btn.setFont(QFont("Arial", 11))
         skip_btn.setStyleSheet("""
             QPushButton {
@@ -249,9 +249,18 @@ class AnswerKeyDialog(QDialog):
         self.accept()
     
     def skip_answer_key(self):
-        self.method = "skip"
-        self.answers = [None] * self.num_questions
-        self.accept()
+        reply = QMessageBox.question(
+            self,
+            "Skip Results",
+            "Are you sure? This will skip the results page.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.method = "skip"
+            self.answers = [None] * self.num_questions
+            self.accept()
+        # If No is selected, do nothing (stay on the dialog)
     
     def get_answers(self):
         return self.answers, self.method

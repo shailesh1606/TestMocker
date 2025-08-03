@@ -401,19 +401,24 @@ class TestWindow(QWidget):
         answer_dialog = AnswerKeyDialog(self.num_questions, self)
         if answer_dialog.exec_() == QDialog.Accepted:
             correct_answers, method = answer_dialog.get_answers()
+            
+            # If user chose to skip, don't show results window or completion message
+            if method == "skip":
+                self.close()
+                return
+            
+            # Show results window for manual or auto methods
+            self.results_window = ResultsWindow(
+                answers=self.answers,
+                correct_answers=correct_answers,
+                time_taken=time_taken_seconds,
+                total_time=initial_time_seconds
+            )
+            self.results_window.show()
         else:
-            # User cancelled, treat as skip
-            correct_answers, method = [None] * self.num_questions, "skip"
-    
-        # Show results window
-        self.results_window = ResultsWindow(
-            answers=self.answers,
-            correct_answers=correct_answers,
-            time_taken=time_taken_seconds,
-            total_time=initial_time_seconds
-        )
-        self.results_window.show()
-        
+            # User cancelled the dialog, just show completion message
+            QMessageBox.information(self, "Test Completed", "Your test has been submitted successfully!")
+
         # Close test window
         self.close()
 
