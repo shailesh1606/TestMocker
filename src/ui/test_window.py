@@ -1,12 +1,13 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout, QRadioButton,
     QPushButton, QButtonGroup, QSizePolicy, QGroupBox, QGridLayout, QMessageBox,
-    QSplitter, QWidget, QSlider
+    QSplitter, QWidget, QSlider, QDialog
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap, QImage, QFont
 import fitz  # PyMuPDF
 from ui.results_window import ResultsWindow
+from ui.answer_key_dialog import AnswerKeyDialog
 
 STATE_COLORS = {
     "not_visited": "#bdbdbd",      # grey
@@ -387,7 +388,7 @@ class TestWindow(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
-    
+
         self.timer.stop()
         self.disable_test_ui()
         
@@ -396,10 +397,18 @@ class TestWindow(QWidget):
         remaining_time_seconds = self.time_left.hour() * 3600 + self.time_left.minute() * 60 + self.time_left.second()
         time_taken_seconds = initial_time_seconds - remaining_time_seconds
         
+        # Show answer key dialog
+        answer_dialog = AnswerKeyDialog(self.num_questions, self)
+        if answer_dialog.exec_() == QDialog.Accepted:
+            correct_answers, method = answer_dialog.get_answers()
+        else:
+            # User cancelled, treat as skip
+            correct_answers, method = [None] * self.num_questions, "skip"
+    
         # Show results window
         self.results_window = ResultsWindow(
             answers=self.answers,
-            correct_answers=None,  # You can pass actual correct answers here
+            correct_answers=correct_answers,
             time_taken=time_taken_seconds,
             total_time=initial_time_seconds
         )
