@@ -1,62 +1,52 @@
-# Python Desktop CBT Application
+# TestMocker
 
-This project is a Python desktop application designed for conducting computer-based tests (CBTs). It allows users to scan question papers and answer keys, take timed tests, and upload question papers and answer keys directly as PDFs.
+A desktop application for computer-based testing that allows users to view question papers in PDF format, answer questions interactively, and analyze results. Features include manual and automatic answer key entry, time tracking, and a modern user interface built with PyQt5. Ideal for mock exams, practice tests, and digital assessments.
 
 ## Features
 
-- **Scan Question Papers**: Users can scan physical question papers and answer keys using a scanner device.
-- **Timed Tests**: The application provides a timed interface for taking tests, ensuring that users can manage their time effectively.
-- **PDF Uploads**: Users can upload question papers and answer keys in PDF format directly into the application.
-
-## Project Structure
-
-```
-python-desktop-cbt-app
-├── src
-│   ├── main.py               # Entry point of the application
-│   ├── ui
-│   │   ├── main_window.py    # Main user interface management
-│   │   └── test_window.py     # Test interface management
-│   ├── scanner
-│   │   └── pdf_scanner.py    # Scanning functionality
-│   ├── tests
-│   │   └── test_timer.py      # Unit tests for timer functionality
-│   ├── utils
-│   │   └── file_utils.py      # Utility functions for file operations
-│   └── data
-│       └── __init__.py        # Data package initializer
-├── requirements.txt           # Project dependencies
-├── README.md                  # Project documentation
-└── setup.py                   # Packaging configuration
-```
+- View and zoom PDF question papers
+- Interactive question palette and answer selection
+- Time tracking and auto-submit when time is up
+- Manual answer key entry (recommended)
+- Option for experimental auto-extract of answer key (feature not yet implemented)
+- Detailed results and analysis window
+- Modern, user-friendly interface
 
 ## Installation
 
 1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd python-desktop-cbt-app
-   ```
+    ```bash
+    git clone https://github.com/yourusername/testmocker.git
+    cd testmocker
+    ```
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+2. Create and activate a Python virtual environment:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3. Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Usage
 
 1. Run the application:
-   ```
-   python src/main.py
-   ```
+    ```bash
+    python src/main.py
+    ```
 
-2. Use the main interface to scan question papers or upload PDFs.
+2. Upload a PDF or scan a question paper to start a test.
 
-3. Navigate to the test interface to take a timed test.
+3. Answer questions using the interactive interface.
+
+4. Submit the test and enter the answer key manually for detailed results.
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+Contributions are welcome! Please open issues or submit pull requests for improvements or bug fixes.
 
 ## License
 
