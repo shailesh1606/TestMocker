@@ -22,7 +22,7 @@ A desktop application for computer-based testing that allows users to view quest
 
 2. Create and activate a Python virtual environment:
     ```bash
-    python3 -m venv venv
+    python3 -m venv venv    
     source venv/bin/activate
     ```
 

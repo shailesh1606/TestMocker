@@ -87,16 +87,53 @@ class ResultsWindow(QWidget):
         summary_box.setLayout(summary_layout)
         main_layout.addWidget(summary_box)
         
-        # Question-wise analysis (placeholder for now)
+        # Question-wise analysis
         analysis_box = QGroupBox("Question Analysis")
         analysis_box.setFont(QFont("Arial", 14, QFont.Bold))
         analysis_layout = QVBoxLayout()
-        
-        analysis_label = QLabel("Detailed question-wise analysis will be shown here.")
-        analysis_label.setFont(QFont("Arial", 12))
-        analysis_label.setStyleSheet("color: #666; padding: 20px;")
-        analysis_layout.addWidget(analysis_label)
-        
+
+        table = QTableWidget(self.num_questions, 3)
+        table.setHorizontalHeaderLabels(["Question", "Your Answer", "Correct Answer"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.NoSelection)
+        table.verticalHeader().setVisible(False)
+
+        answer_map = {None: "--", 0: "A", 1: "B", 2: "C", 3: "D"}
+
+        for i in range(self.num_questions):
+            # Question number
+            q_item = QTableWidgetItem(f"Q{i+1}")
+            q_item.setTextAlignment(Qt.AlignCenter)
+            table.setItem(i, 0, q_item)
+
+            # User answer
+            user_ans = answer_map.get(self.answers[i], "--")
+            user_item = QTableWidgetItem(user_ans)
+            user_item.setTextAlignment(Qt.AlignCenter)
+
+            # Correct answer
+            correct_ans = answer_map.get(self.correct_answers[i], "--")
+            correct_item = QTableWidgetItem(correct_ans)
+            correct_item.setTextAlignment(Qt.AlignCenter)
+
+            # Highlighting
+            if self.answers[i] is not None and self.answers[i] == self.correct_answers[i]:
+                user_item.setBackground(Qt.green)
+                user_item.setForeground(Qt.white)
+            elif self.answers[i] is not None and self.correct_answers[i] is not None:
+                user_item.setBackground(Qt.red)
+                user_item.setForeground(Qt.white)
+                correct_item.setBackground(Qt.green)
+                correct_item.setForeground(Qt.white)
+            elif self.answers[i] is None:
+                user_item.setBackground(Qt.lightGray)
+
+            table.setItem(i, 1, user_item)
+            table.setItem(i, 2, correct_item)
+
+        table.resizeColumnsToContents()
+        analysis_layout.addWidget(table)
         analysis_box.setLayout(analysis_layout)
         main_layout.addWidget(analysis_box)
         
