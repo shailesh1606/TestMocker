@@ -1,9 +1,31 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-    QGroupBox, QGridLayout, QComboBox, QMessageBox, QScrollArea, QWidget
+    QGroupBox, QGridLayout, QComboBox, QMessageBox, QScrollArea, QWidget,
+    QFileDialog, QInputDialog, QLineEdit, QApplication, QProgressDialog
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
+import os
+
+# Add worker thread class
+class ExtractWorker(QThread):
+    finished = pyqtSignal(object)   # emits raw answers list on success
+    error = pyqtSignal(str)         # emits error message on failure
+
+    def __init__(self, pdf_path, api_key, num_questions):
+        super().__init__()
+        self.pdf_path = pdf_path
+        self.api_key = api_key
+        self.num_questions = num_questions
+
+    def run(self):
+        try:
+            # import here to keep main thread imports minimal
+            from scripts.fetch_answers_openai import extract_answers_from_pdf
+            raw = extract_answers_from_pdf(self.pdf_path, api_key=self.api_key, num_questions=self.num_questions)
+            self.finished.emit(raw)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class AnswerKeyDialog(QDialog):
     def __init__(self, num_questions, parent=None):
@@ -225,12 +247,80 @@ class AnswerKeyDialog(QDialog):
         self.resize(600, 800)
     
     def use_auto_extract(self):
-        QMessageBox.information(
-            self,
-            "Feature Not Available",
-            "Auto-extract feature is not implemented yet.\n\nPlease use manual entry for now.",
-            QMessageBox.Ok
-        )
+        # Ask user to select the answer key PDF
+        pdf_path, _ = QFileDialog.getOpenFileName(self, "Select Answer Key PDF", "", "PDF Files (*.pdf);;All Files (*)")
+        if not pdf_path:
+            return
+
+        # Try environment variable first, else ask for API key
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            key_text, ok = QInputDialog.getText(self, "OpenAI API Key", "Enter OpenAI API Key (or set OPENAI_API_KEY env var):", QLineEdit.Normal)
+            if not ok or not key_text.strip():
+                QMessageBox.warning(self, "API Key Required", "OpenAI API key is required for auto-extract.")
+                return
+            api_key = key_text.strip()
+
+        # Progress dialog (indeterminate)
+        self._progress = QProgressDialog("Extracting answer key — please wait...", None, 0, 0, self)
+        self._progress.setWindowModality(Qt.WindowModal)
+        self._progress.setCancelButton(None)
+        self._progress.setMinimumDuration(0)
+        self._progress.show()
+        QApplication.processEvents()
+
+        # Start worker thread
+        self._worker = ExtractWorker(pdf_path, api_key, self.num_questions)
+        self._worker.finished.connect(self._on_extract_success)
+        self._worker.error.connect(self._on_extract_error)
+        self._worker.start()
+
+    def _on_extract_success(self, raw_answers):
+        # Called in main thread
+        try:
+            mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
+            normalized = []
+            for it in raw_answers:
+                if it is None:
+                    normalized.append(None)
+                elif isinstance(it, (list, tuple)):
+                    first = it[0] if it else None
+                    normalized.append(mapping.get(first.upper(), None) if isinstance(first, str) else None)
+                elif isinstance(it, str):
+                    s = it.strip().upper()
+                    normalized.append(mapping.get(s[0] if s else s, None))
+                else:
+                    normalized.append(None)
+
+            # adjust length
+            if len(normalized) < self.num_questions:
+                normalized += [None] * (self.num_questions - len(normalized))
+            elif len(normalized) > self.num_questions:
+                normalized = normalized[:self.num_questions]
+
+            self.answers = normalized
+            self.method = "auto"
+            if hasattr(self, "_progress"):
+                self._progress.close()
+            QMessageBox.information(self, "Success", "Answer key extracted successfully.")
+            self.accept()
+        finally:
+            # ensure thread cleaned up
+            try:
+                self._worker.quit()
+                self._worker.wait(100)
+            except Exception:
+                pass
+
+    def _on_extract_error(self, msg):
+        if hasattr(self, "_progress"):
+            self._progress.close()
+        QMessageBox.warning(self, "Extraction Failed", f"Failed to extract answers:\n{msg}")
+        try:
+            self._worker.quit()
+            self._worker.wait(100)
+        except Exception:
+            pass
     
     def cancel_manual_entry(self):
         self.manual_entry_widget.hide()
