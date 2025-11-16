@@ -8,6 +8,7 @@ from PyQt5.QtGui import QPixmap, QImage, QFont
 import fitz  # PyMuPDF
 from ui.results_window import ResultsWindow
 from ui.answer_key_dialog import AnswerKeyDialog
+from ui.pymupdf_selectable_view import SelectablePdfViewer
 
 STATE_COLORS = {
     "not_visited": "#bdbdbd",      # grey
@@ -51,29 +52,9 @@ class TestWindow(QWidget):
             no_pdf_label.setFont(QFont("Arial", 14, QFont.Bold))
             pdf_layout.addWidget(no_pdf_label)
         else:
-            scroll = QScrollArea()
-            pdf_widget = QWidget()
-            pdf_vbox = QVBoxLayout()
-            pdf_widget.setLayout(pdf_vbox)
-
-            doc = fitz.open(pdf_path)
-            for page_num in range(doc.page_count):
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                img_format = QImage.Format_RGBA8888 if pix.alpha else QImage.Format_RGB888
-                img = QImage(bytes(pix.samples), pix.width, pix.height, pix.stride, img_format)
-                lbl = QLabel()
-                lbl.setPixmap(QPixmap.fromImage(img))
-                lbl.setAlignment(Qt.AlignCenter)
-                lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                pdf_vbox.addWidget(lbl)
-            doc.close()
-
-            scroll.setWidget(pdf_widget)
-            scroll.setWidgetResizable(True)
-            scroll.setMinimumWidth(500)
-            scroll.setStyleSheet("background: #f5f5f5; border: 1px solid #bdbdbd;")
-            pdf_layout.addWidget(scroll)
+            # Replace with selectable PyMuPDF viewer
+            self.pdf_viewer = SelectablePdfViewer(pdf_path, zoom=1.5)
+            pdf_layout.addWidget(self.pdf_viewer)
 
             # Zoom slider
             self.zoom_slider = QSlider(Qt.Horizontal)
@@ -89,7 +70,6 @@ class TestWindow(QWidget):
             pdf_layout.addWidget(zoom_label)
             pdf_layout.addWidget(self.zoom_slider)
 
-            self.pdf_vbox = pdf_vbox  # Save reference for later
             self.pdf_path = pdf_path  # Save reference for later
 
         # --------------------------------------
@@ -249,11 +229,10 @@ class TestWindow(QWidget):
         self.update_question_ui()
         self.update_timer()  # Show initial time
 
-        # Connect the slider to re-render PDF pages
-        self.zoom_slider.valueChanged.connect(lambda val: self.render_pdf_pages(val))
-
-        # Initial render
-        self.render_pdf_pages(self.zoom_slider.value())
+        # Connect zoom to selectable viewer
+        self.zoom_slider.valueChanged.connect(lambda val: self.pdf_viewer.set_zoom(val / 100.0))
+        # Initialize zoom
+        self.pdf_viewer.set_zoom(self.zoom_slider.value() / 100.0)
 
     def save_and_next(self):
         self.save_current_answer()
