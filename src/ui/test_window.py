@@ -207,6 +207,9 @@ class TestWindow(QWidget):
         actions_layout_bottom = QHBoxLayout()
         actions_layout_bottom.setSpacing(8)
 
+        # expose layout for extensions (learning mode will add the Hint button here)
+        self.actions_layout_bottom = actions_layout_bottom
+
         self.mark_review_next_btn = QPushButton("MARK FOR REVIEW && NEXT")
         self.mark_review_next_btn.setStyleSheet("background-color: #512da8; color: white; font-weight: bold; padding: 8px 18px;")
         self.mark_review_next_btn.setFont(QFont("Arial", 12, QFont.Bold))
