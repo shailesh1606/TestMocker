@@ -93,6 +93,15 @@ class MainWindow(QMainWindow):
         self.take_test_button.clicked.connect(self.take_test)
         button_layout.addWidget(self.take_test_button)
 
+        # Separate Learning Mode entry
+        self.learning_mode_button = self.create_card_button(
+            "Learning Mode",
+            "Practice with hints and get a learning report",
+            "#6a1b9a"
+        )
+        self.learning_mode_button.clicked.connect(self.start_learning_mode)
+        button_layout.addWidget(self.learning_mode_button)
+
         main_layout.addLayout(button_layout)
         main_layout.addStretch()
 
@@ -164,3 +173,28 @@ class MainWindow(QMainWindow):
 
         self.test_window = TestWindow(self.uploaded_pdf_path, time_limit, num_questions)
         self.test_window.show()
+
+    def start_learning_mode(self):
+        """Start test in Learning Mode (separate from normal test)."""
+        if not self.uploaded_pdf_path:
+            self.label.setText("Please upload a PDF before starting Learning Mode.")
+            return
+
+        # Ask for number of questions
+        num_questions, ok1 = QInputDialog.getInt(
+            self, "Number of Questions (Learning Mode)", "Enter the number of questions:", min=1, max=200, value=20
+        )
+        if not ok1:
+            return
+
+        # Ask for time limit
+        time_limit, ok2 = QInputDialog.getInt(
+            self, "Time Limit (minutes)", "Enter the time limit (minutes):", min=1, max=300, value=30
+        )
+        if not ok2:
+            return
+
+        # Create LearningWindow instead of TestWindow
+        from ui.learning_window import LearningWindow
+        self.learning_window = LearningWindow(self.uploaded_pdf_path, time_limit, num_questions)
+        self.learning_window.show()
