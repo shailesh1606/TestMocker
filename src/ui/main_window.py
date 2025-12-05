@@ -3,7 +3,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QIcon
-from scanner.pdf_scanner import PDFScanner
 from ui.test_window import TestWindow
 
 class MainWindow(QMainWindow):
@@ -68,14 +67,7 @@ class MainWindow(QMainWindow):
         button_layout = QVBoxLayout()
         button_layout.setSpacing(15)
 
-        # Create card-style buttons
-        self.scan_button = self.create_card_button(
-            "Scan Question Paper", 
-            "Capture and digitize physical question papers",
-            "#1976d2"
-        )
-        self.scan_button.clicked.connect(self.scan_question_paper)
-        button_layout.addWidget(self.scan_button)
+        # Create card-style buttons (scanner removed)
 
         self.upload_button = self.create_card_button(
             "Upload PDF", 
@@ -138,12 +130,6 @@ class MainWindow(QMainWindow):
         button.setText(button_text)
         
         return button
-
-    def scan_question_paper(self):
-        scanner = PDFScanner()
-        scanned_file = scanner.scan()
-        if scanned_file:
-            self.label.setText(f"Scanned file saved as: {scanned_file}")
 
     def upload_pdf(self):
         options = QFileDialog.Options()
