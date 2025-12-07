@@ -32,7 +32,7 @@ class HintWorker(QThread):
                 opts_text = "\nOptions:\n" + "\n".join(self.options)
 
             prompt = (
-                "Provide a concise (<=2 sentences) pedagogical hint for the question below. "
+                "Provide a concise (<=4 sentences) pedagogical hint for the question below. "
                 "Do NOT reveal the final answer. Avoid stating which option is correct.\n\n"
                 f"Question:\n{self.question_text}\n\n{opts_text}\n\nHint:"
             )
