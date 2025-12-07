@@ -6,8 +6,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from ui.test_window import TestWindow
 from ui.hint_worker import HintWorker
-import uuid
-from db import storage
 
 class QuestionContextDialog(QDialog):
     def __init__(self, parent=None, initial_question="", initial_options=""):
@@ -53,7 +51,6 @@ class LearningWindow(TestWindow):
         self.learning_mode = True
         self.hints_used = {}              # question_index -> count
         self.hint_limit = 6               # default limit
-        self.attempt_uuid = str(uuid.uuid4())
         self.user_question_texts = {}     # user-provided context per question
         self.user_option_texts = {}       # user-provided options per question (list[str])
         self._add_learning_controls()
@@ -231,37 +228,3 @@ class LearningWindow(TestWindow):
             self._hint_worker.wait(100)
         except Exception:
             pass
-
-    def _log_all_attempts(self):
-        """
-        Persist all answered questions from this session to DB.
-        correct_answer/time_spent not tracked in learning mode yet.
-        """
-        try:
-            num_q = getattr(self, "num_questions", 0)
-            answers = getattr(self, "answers", [])
-            for i in range(num_q):
-                selected = answers[i] if i < len(answers) else None
-                hint_count = self.hints_used.get(i, 0)
-                storage.log_attempt(
-                    attempt_uuid=self.attempt_uuid,
-                    question_index=i,
-                    selected_answer=selected,
-                    correct_answer=None,
-                    time_spent_sec=0,
-                    hint_count=hint_count
-                )
-        except Exception:
-            pass
-
-    def submit_test(self, auto=False):
-        """
-        On submit in learning mode, log attempts to DB, then reuse base flow.
-        """
-        try:
-            if hasattr(self, "save_current_answer"):
-                self.save_current_answer()
-        except Exception:
-            pass
-        self._log_all_attempts()
-        return super().submit_test(auto)

@@ -9,6 +9,8 @@ import fitz  # PyMuPDF
 from ui.results_window import ResultsWindow
 from ui.answer_key_dialog import AnswerKeyDialog
 from ui.pymupdf_selectable_view import SelectablePdfViewer
+import uuid
+from db import storage
 
 STATE_COLORS = {
     "not_visited": "#bdbdbd",      # grey
@@ -26,6 +28,8 @@ class TestWindow(QWidget):
         self.answers = [None] * num_questions  # Store user answers
         self.question_states = ["not_visited"] * self.num_questions  # Tracks question status: 'not_visited', 'answered', 'not_answered', 'review'
         self.review_flags = [False] * self.num_questions             # Marks if question is flagged for review
+        # session id for DB logging
+        self.attempt_uuid = str(uuid.uuid4())
 
         self.setWindowTitle('Take Test')
         self.setGeometry(150, 150, 1200, 800)
@@ -384,6 +388,27 @@ class TestWindow(QWidget):
         if answer_dialog.exec_() == QDialog.Accepted:
             correct_answers, method = answer_dialog.get_answers()
             
+            # Log attempts to DB (one row per question)
+            try:
+                for i in range(self.num_questions):
+                    selected = self.answers[i] if i < len(self.answers) else None
+                    correct = correct_answers[i] if i < len(correct_answers) else None
+                    # Use hints_used if present (learning mode); else 0
+                    hint_count = 0
+                    if hasattr(self, "hints_used"):
+                        hint_count = getattr(self, "hints_used", {}).get(i, 0) or 0
+                    storage.log_attempt(
+                        attempt_uuid=self.attempt_uuid,
+                        question_index=i,
+                        selected_answer=selected,
+                        correct_answer=correct,
+                        time_spent_sec=0,
+                        hint_count=hint_count
+                    )
+            except Exception:
+                # Non-fatal: continue to results even if logging fails
+                pass
+ 
             # If user chose to skip, don't show results window or completion message
             if method == "skip":
                 self.close()
