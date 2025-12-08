@@ -421,9 +421,14 @@ class TestWindow(QWidget):
         remaining_time_seconds = self.time_left.hour() * 3600 + self.time_left.minute() * 60 + self.time_left.second()
         time_taken_seconds = initial_time_seconds - remaining_time_seconds
         
-        answer_dialog = AnswerKeyDialog(self.num_questions, self)
+        answer_dialog = AnswerKeyDialog(self.num_questions, self, question_types=self.question_types)
         if answer_dialog.exec_() == QDialog.Accepted:
             correct_answers, method = answer_dialog.get_answers()
+            # correct_answers is now a list of dicts: {"type": "...", "value": ...}
+            # For DB logging, store only MCQ indices (others None):
+            correct_idx = [ca["value"] if isinstance(ca, dict) and ca.get("type") == "mcq" else None
+                           for ca in correct_answers]
+            # use correct_idx for DB storage; keep full correct_answers for future results processing
 
             # Log to DB: only MCQ selected_answer fits current schema; numeric/text logged as None for selected_answer
             try:

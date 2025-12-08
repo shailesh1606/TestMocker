@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QInputDialog, QLineEdit, QApplication, QProgressDialog
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QDoubleValidator
 import os
 
 # Add worker thread class
@@ -12,30 +12,33 @@ class ExtractWorker(QThread):
     finished = pyqtSignal(object)   # emits raw answers list on success
     error = pyqtSignal(str)         # emits error message on failure
 
-    def __init__(self, pdf_path, api_key, num_questions):
+    def __init__(self, pdf_path, api_key, num_questions, question_types=None):
         super().__init__()
         self.pdf_path = pdf_path
         self.api_key = api_key
         self.num_questions = num_questions
-
+        self.question_types = question_types
     def run(self):
         try:
             # import here to keep main thread imports minimal
             from scripts.fetch_answers_openai import extract_answers_from_pdf
-            raw = extract_answers_from_pdf(self.pdf_path, api_key=self.api_key, num_questions=self.num_questions)
+            raw = extract_answers_from_pdf(self.pdf_path, api_key=self.api_key, num_questions=self.num_questions, question_types=self.question_types)
             self.finished.emit(raw)
         except Exception as e:
             self.error.emit(str(e))
 
 class AnswerKeyDialog(QDialog):
-    def __init__(self, num_questions, parent=None):
+    def __init__(self, num_questions, parent=None, question_types=None):
         super().__init__(parent)
         self.num_questions = num_questions
-        self.answers = [None] * num_questions
+        # question_types: list[str] of "mcq" | "numeric" | "text"
+        self.question_types = question_types if question_types and len(question_types) == num_questions else ["mcq"] * num_questions
+        # answers will be a list[dict] with {"type": "...", "value": ...}
+        self.answers = [{"type": t, "value": None} for t in self.question_types]
         self.method = None
         self.setWindowTitle("Enter Answer Key")
         self.setModal(True)
-        self.resize(600, 700)
+        self.resize(700, 800)
         self.init_ui()
     
     def init_ui(self):
@@ -50,7 +53,7 @@ class AnswerKeyDialog(QDialog):
         title.setStyleSheet("color: #1976d2; margin-bottom: 10px;")
         main_layout.addWidget(title)
         
-        subtitle = QLabel("To show detailed results, please provide the correct answers.")
+        subtitle = QLabel("Provide the correct answers for each question. Inputs will match the question type (MCQ/Numeric/Text).")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setFont(QFont("Arial", 12))
         subtitle.setStyleSheet("color: #666; margin-bottom: 20px;")
@@ -65,7 +68,7 @@ class AnswerKeyDialog(QDialog):
         manual_box = QGroupBox("Manual Entry (Recommended)")
         manual_box.setStyleSheet("QGroupBox { font-weight: bold; color: #43a047; }")
         manual_layout = QVBoxLayout()
-        manual_desc = QLabel("• Enter answers manually\n• 100% accurate\n• Quick and reliable")
+        manual_desc = QLabel("• Enter answers manually per question type\n• MCQ → choose A/B/C/D\n• Numeric → enter value (e.g., 3.14)\n• Text → enter a word/phrase")
         manual_desc.setFont(QFont("Arial", 11))
         manual_desc.setStyleSheet("color: #666; margin: 10px;")
         manual_layout.addWidget(manual_desc)
@@ -92,7 +95,7 @@ class AnswerKeyDialog(QDialog):
         auto_box = QGroupBox("Auto Extract (Experimental)")
         auto_box.setStyleSheet("QGroupBox { font-weight: bold; color: #ff9800; }")
         auto_layout = QVBoxLayout()
-        auto_desc = QLabel("• Extract from answer key PDF\n• May have accuracy issues\n• Requires OpenAI API")
+        auto_desc = QLabel("• Extract from answer key PDF (MCQ-only)\n• May have accuracy issues\n• Requires OpenAI API")
         auto_desc.setFont(QFont("Arial", 11))
         auto_desc.setStyleSheet("color: #666; margin: 10px;")
         auto_layout.addWidget(auto_desc)
@@ -152,7 +155,7 @@ class AnswerKeyDialog(QDialog):
         layout = QVBoxLayout(self.manual_entry_widget)
         
         # Instructions
-        instructions = QLabel("Enter the correct answer (A, B, C, or D) for each question:")
+        instructions = QLabel("Enter the correct answer for each question:")
         instructions.setFont(QFont("Arial", 12, QFont.Bold))
         instructions.setStyleSheet("color: #333; margin: 10px 0;")
         layout.addWidget(instructions)
@@ -163,41 +166,71 @@ class AnswerKeyDialog(QDialog):
         scroll_layout = QGridLayout(scroll_widget)
         scroll_layout.setSpacing(10)
         
-        self.answer_combos = []
-        questions_per_row = 5
+        # Keep references to per-question input widgets and labels
+        self.input_widgets = []  # list of tuples: (type, widget)
+        questions_per_row = 3
         
         for i in range(self.num_questions):
-            # Question label
-            q_label = QLabel(f"Q{i+1}:")
+            q_type = self.question_types[i]  # "mcq" | "numeric" | "text"
+            # Question label with type
+            q_label = QLabel(f"Q{i+1} ({q_type.upper()}):")
             q_label.setFont(QFont("Arial", 11, QFont.Bold))
-            q_label.setAlignment(Qt.AlignCenter)
+            q_label.setAlignment(Qt.AlignLeft)
             
-            # Answer combo box
-            combo = QComboBox()
-            combo.addItems(["--", "A", "B", "C", "D"])
-            combo.setFont(QFont("Arial", 11))
-            combo.setStyleSheet("""
-                QComboBox {
-                    padding: 5px;
-                    border: 2px solid #e0e0e0;
-                    border-radius: 4px;
-                    min-width: 50px;
-                }
-                QComboBox:focus {
-                    border-color: #1976d2;
-                }
-            """)
+            # Input widget based on type
+            if q_type == "mcq":
+                widget = QComboBox()
+                widget.addItems(["--", "A", "B", "C", "D"])
+                widget.setFont(QFont("Arial", 11))
+                widget.setStyleSheet("""
+                    QComboBox {
+                        padding: 5px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 4px;
+                        min-width: 70px;
+                    }
+                    QComboBox:focus { border-color: #1976d2; }
+                """)
+            elif q_type == "numeric":
+                widget = QLineEdit()
+                widget.setPlaceholderText("e.g., 3.14, -2, 1/3")
+                # Soft validation: allow digits, signs, dot; leave exact parsing to evaluation time
+                # (QDoubleValidator is too strict for fractions like 1/3)
+                widget.setFont(QFont("Arial", 11))
+                widget.setStyleSheet("""
+                    QLineEdit {
+                        padding: 6px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 4px;
+                        min-width: 120px;
+                    }
+                    QLineEdit:focus { border-color: #1976d2; }
+                """)
+            else:  # text
+                widget = QLineEdit()
+                widget.setPlaceholderText("Enter text (case-insensitive compare)")
+                widget.setFont(QFont("Arial", 11))
+                widget.setStyleSheet("""
+                    QLineEdit {
+                        padding: 6px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 4px;
+                        min-width: 160px;
+                    }
+                    QLineEdit:focus { border-color: #1976d2; }
+                """)
             
             row = i // questions_per_row
-            col = i % questions_per_row
+            col = (i % questions_per_row) * 2  # label + input side by side
             
-            scroll_layout.addWidget(q_label, row * 2, col)
-            scroll_layout.addWidget(combo, row * 2 + 1, col)
+            scroll_layout.addWidget(q_label, row, col, alignment=Qt.AlignLeft)
+            scroll_layout.addWidget(widget, row, col + 1, alignment=Qt.AlignLeft)
             
-            self.answer_combos.append(combo)
+            self.input_widgets.append((q_type, widget))
         
         scroll.setWidget(scroll_widget)
-        scroll.setMaximumHeight(300)
+        scroll.setWidgetResizable(True)
+        scroll.setMaximumHeight(360)
         scroll.setStyleSheet("border: 1px solid #e0e0e0; border-radius: 4px;")
         layout.addWidget(scroll)
         
@@ -214,9 +247,7 @@ class AnswerKeyDialog(QDialog):
                 border-radius: 4px;
                 border: none;
             }
-            QPushButton:hover {
-                background-color: #bdbdbd;
-            }
+            QPushButton:hover { background-color: #bdbdbd; }
         """)
         cancel_btn.clicked.connect(self.cancel_manual_entry)
         
@@ -230,9 +261,7 @@ class AnswerKeyDialog(QDialog):
                 border-radius: 4px;
                 border: none;
             }
-            QPushButton:hover {
-                background-color: #1565c0;
-            }
+            QPushButton:hover { background-color: #1565c0; }
         """)
         save_btn.clicked.connect(self.save_manual_answers)
         
@@ -244,7 +273,7 @@ class AnswerKeyDialog(QDialog):
     def use_manual_entry(self):
         self.method = "manual"
         self.manual_entry_widget.show()
-        self.resize(600, 800)
+        self.resize(700, 900)
     
     def use_auto_extract(self):
         # Ask user to select the answer key PDF
@@ -255,6 +284,7 @@ class AnswerKeyDialog(QDialog):
         # Try environment variable first, else ask for API key
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
+            from PyQt5.QtWidgets import QInputDialog
             key_text, ok = QInputDialog.getText(self, "OpenAI API Key", "Enter OpenAI API Key (or set OPENAI_API_KEY env var):", QLineEdit.Normal)
             if not ok or not key_text.strip():
                 QMessageBox.warning(self, "API Key Required", "OpenAI API key is required for auto-extract.")
@@ -270,35 +300,41 @@ class AnswerKeyDialog(QDialog):
         QApplication.processEvents()
 
         # Start worker thread
-        self._worker = ExtractWorker(pdf_path, api_key, self.num_questions)
+        self._worker = ExtractWorker(pdf_path, api_key, self.num_questions, self.question_types)
         self._worker.finished.connect(self._on_extract_success)
         self._worker.error.connect(self._on_extract_error)
         self._worker.start()
 
     def _on_extract_success(self, raw_answers):
-        # Called in main thread
+        # Called in main thread. raw_answers is typically MCQ choices only.
         try:
             mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
-            normalized = []
-            for it in raw_answers:
-                if it is None:
-                    normalized.append(None)
-                elif isinstance(it, (list, tuple)):
-                    first = it[0] if it else None
-                    normalized.append(mapping.get(first.upper(), None) if isinstance(first, str) else None)
-                elif isinstance(it, str):
-                    s = it.strip().upper()
-                    normalized.append(mapping.get(s[0] if s else s, None))
+            structured = []
+            for i in range(self.num_questions):
+                qtype = self.question_types[i]
+                if i < len(raw_answers) and qtype == "mcq":
+                    it = raw_answers[i]
+                    idx = None
+                    if it is None:
+                        idx = None
+                    elif isinstance(it, (list, tuple)):
+                        first = it[0] if it else None
+                        idx = mapping.get(first.upper(), None) if isinstance(first, str) else None
+                    elif isinstance(it, str):
+                        s = it.strip().upper()
+                        idx = mapping.get(s[0] if s else s, None)
+                    structured.append({"type": "mcq", "value": idx})
                 else:
-                    normalized.append(None)
+                    # For non-MCQ (or missing), leave None to be filled manually if needed
+                    structured.append({"type": qtype, "value": None})
 
             # adjust length
-            if len(normalized) < self.num_questions:
-                normalized += [None] * (self.num_questions - len(normalized))
-            elif len(normalized) > self.num_questions:
-                normalized = normalized[:self.num_questions]
+            if len(structured) < self.num_questions:
+                structured += [{"type": self.question_types[j], "value": None} for j in range(len(structured), self.num_questions)]
+            elif len(structured) > self.num_questions:
+                structured = structured[:self.num_questions]
 
-            self.answers = normalized
+            self.answers = structured
             self.method = "auto"
             if hasattr(self, "_progress"):
                 self._progress.close()
@@ -325,16 +361,24 @@ class AnswerKeyDialog(QDialog):
     def cancel_manual_entry(self):
         self.manual_entry_widget.hide()
         self.method = None
-        self.resize(600, 700)
+        self.resize(700, 800)
     
     def save_manual_answers(self):
-        # Convert combo box selections to answer format
-        answer_mapping = {"--": None, "A": 0, "B": 1, "C": 2, "D": 3}
-        
-        for i, combo in enumerate(self.answer_combos):
-            selected = combo.currentText()
-            self.answers[i] = answer_mapping.get(selected, None)
-        
+        # Build structured answers list based on per-question type
+        mapping_rev = {"--": None, "A": 0, "B": 1, "C": 2, "D": 3}
+        out = []
+        for i, (qtype, widget) in enumerate(self.input_widgets):
+            if qtype == "mcq":
+                selected = widget.currentText()
+                out.append({"type": "mcq", "value": mapping_rev.get(selected, None)})
+            elif qtype == "numeric":
+                val = widget.text().strip()
+                out.append({"type": "numeric", "value": val if val != "" else None})
+            else:  # text
+                val = widget.text().strip()
+                out.append({"type": "text", "value": val if val != "" else None})
+
+        self.answers = out
         self.method = "manual"
         self.accept()
     
@@ -348,9 +392,10 @@ class AnswerKeyDialog(QDialog):
         )
         if reply == QMessageBox.Yes:
             self.method = "skip"
-            self.answers = [None] * self.num_questions
+            self.answers = [{"type": t, "value": None} for t in self.question_types]
             self.accept()
         # If No is selected, do nothing (stay on the dialog)
     
     def get_answers(self):
+        # Returns a structured list of dicts for all types and the chosen method
         return self.answers, self.method

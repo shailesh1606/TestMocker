@@ -4,10 +4,12 @@ import re
 import fitz  # PyMuPDF
 import openai
 
-def extract_answers_from_pdf(pdf_path, api_key=None, model="gpt-4o", num_questions=None, max_chars=30000):
+def extract_answers_from_pdf(pdf_path, api_key=None, model="gpt-4o", num_questions=None, max_chars=30000, question_types=None):
     """
     Extracts the answer list from an answer-key PDF using OpenAI chat completions.
-    Returns a list like ["A","B","C", ...] (or list entries can be lists for multi-answer questions).
+    Returns a structured list like:
+      [{"type":"mcq","value":0..3}, {"type":"numeric","value":"3.14"}, {"type":"text","value":"SODIUM"}, ...]
+    - question_types: list of "mcq" | "numeric" | "text" of length num_questions (defaults to mcq for all)
     """
     if api_key:
         openai.api_key = api_key
@@ -33,34 +35,50 @@ def extract_answers_from_pdf(pdf_path, api_key=None, model="gpt-4o", num_questio
     # Truncate to avoid token limits
     text = text[:max_chars]
 
-    # Prompt the model to return only a JSON array of answers
-    prompt = (
-        "You are given an answer key extracted from a test paper. "
-        "Extract the correct answers in order and return ONLY a JSON array. "
-        "Each array item should be a single uppercase letter (A, B, C, D) or a list of such letters "
-        "for multiple-correct answers. Use null for unknown. "
-        "Do NOT include any explanatory text. "
-        f"Here is the text:\n\n{text}\n\n"
-    )
-    if num_questions:
-        prompt += f"Return exactly {num_questions} items in the array. If you cannot determine an answer for a question, use null."
+    # Default question types
+    if question_types is None:
+        if num_questions is None:
+            raise ValueError("question_types or num_questions must be provided.")
+        question_types = ["mcq"] * num_questions
+    else:
+        if num_questions is None:
+            num_questions = len(question_types)
+        elif len(question_types) != num_questions:
+            # Normalize length
+            if len(question_types) < num_questions:
+                question_types = question_types + ["mcq"] * (num_questions - len(question_types))
+            else:
+                question_types = question_types[:num_questions]
 
-    # Use chat completions API as requested
+    # Build a strict instruction so the model returns JSON with type/value per question
+    prompt = (
+        "You are given text from an answer-key PDF. Extract the correct answers in order and return ONLY a JSON array.\n"
+        "Each array item MUST be an object with two keys: {\"type\": \"mcq\"|\"numeric\"|\"text\", \"value\": ...}.\n"
+        "- For mcq: value must be a single uppercase letter A/B/C/D (or null if unknown).\n"
+        "- For numeric: value must be the numeric string as-is (support integers, decimals, fractions like 1/3). Use null if unknown.\n"
+        "- For text: value must be the answer text string (uppercase preferred). Use null if unknown.\n"
+        "Do NOT include any explanatory text. Return strictly a JSON array of length N.\n\n"
+        "Answer-key text:\n"
+        f"{text}\n\n"
+        f"N = {num_questions}\n"
+        f"Question types in order: {question_types}\n"
+        "Return exactly N items. If you cannot determine an answer, set value to null for that item."
+    )
+
     resp = openai.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "You are an assistant that extracts answer keys and returns strict JSON arrays."},
+            {"role": "system", "content": "You extract answer keys and return strict JSON with type/value per question."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.0,
-        max_tokens=1500
+        max_tokens=2000
     )
 
     # Extract text from response
     try:
         raw = resp.choices[0].message.content.strip()
     except Exception:
-        # Fallback to stringified response
         raw = str(resp)
 
     # Extract JSON-like list from model output
@@ -71,51 +89,86 @@ def extract_answers_from_pdf(pdf_path, api_key=None, model="gpt-4o", num_questio
 
     list_str = raw[start:end]
 
+    # Try to parse JSON/py-literal
     try:
         parsed = ast.literal_eval(list_str)
-    except Exception as e:
-        raise ValueError(f"Failed to parse model output as list: {e}")
+    except Exception:
+        # Fallback: try to coerce with simple replacements (true/false/null)
+        try:
+            coerced = list_str.replace("true", "True").replace("false", "False").replace("null", "None")
+            parsed = ast.literal_eval(coerced)
+        except Exception as e:
+            raise ValueError(f"Failed to parse model output as list: {e}")
 
-    # Normalize entries: convert single-letter strings to uppercase letters, lists to uppercase, None -> None
-    def normalize_item(item):
-        if item is None:
-            return None
-        if isinstance(item, str):
-            s = item.strip().upper()
-            if len(s) == 0:
-                return None
-            if any(sep in s for sep in "/,;"):
-                parts = [p.strip().upper() for p in re.split(r'[,/;]+', s) if p.strip()]
-                return [p[0] for p in parts]
-            return s[0] if s[0] in "ABCD" else s
-        if isinstance(item, (list, tuple)):
-            out = []
-            for it in item:
-                if isinstance(it, str) and it.strip():
-                    out.append(it.strip().upper()[0])
-            return out if out else None
-        return item
+    # Normalize entries to required schema and align with question_types
+    mapping_mcq = {"A": 0, "B": 1, "C": 2, "D": 3}
 
-    normalized = [normalize_item(x) for x in parsed]
+    def norm_item(item, qtype):
+        # Expect dict {"type": "...", "value": ...}; tolerate strings for mcq
+        if isinstance(item, dict):
+            itype = str(item.get("type", qtype or "mcq")).lower()
+            val = item.get("value", None)
+        else:
+            # If not dict, coerce based on qtype
+            itype = qtype
+            val = item
 
-    # If num_questions provided, adjust length: pad with None or trim
-    if num_questions is not None:
-        if len(normalized) < num_questions:
-            normalized += [None] * (num_questions - len(normalized))
-        elif len(normalized) > num_questions:
-            normalized = normalized[:num_questions]
+        if itype == "mcq":
+            if val is None:
+                return {"type": "mcq", "value": None}
+            if isinstance(val, str):
+                s = val.strip().upper()
+                return {"type": "mcq", "value": mapping_mcq.get(s[:1], None)}
+            # If list like ["A"], take first
+            if isinstance(val, (list, tuple)) and val:
+                first = str(val[0]).strip().upper()
+                return {"type": "mcq", "value": mapping_mcq.get(first[:1], None)}
+            return {"type": "mcq", "value": None}
 
-    return normalized
+            # Numeric: keep as string, allow -, ., and fraction formats
+        if itype == "numeric":
+            if val is None:
+                return {"type": "numeric", "value": None}
+            s = str(val).strip()
+            # Basic sanitize: remove spaces; keep +/- . digits and / for fractions
+            s = s.replace(" ", "")
+            # If model returns "5 (approx)", strip non-core part
+            s = re.split(r'[^0-9\-\+\.\/]', s)[0] or s
+            return {"type": "numeric", "value": s if s else None}
+
+        if itype == "text":
+            if val is None:
+                return {"type": "text", "value": None}
+            s = str(val).strip()
+            # Normalize to uppercase for consistency
+            s = re.sub(r'\s+', ' ', s).upper()
+            return {"type": "text", "value": s if s else None}
+
+        # Fallback to mcq if unknown type
+        return {"type": "mcq", "value": None}
+
+    structured = []
+    for i in range(num_questions):
+        qtype = question_types[i] if i < len(question_types) else "mcq"
+        item = parsed[i] if i < len(parsed) else None
+        structured.append(norm_item(item, qtype))
+
+    # Ensure length matches num_questions
+    if len(structured) < num_questions:
+        for j in range(len(structured), num_questions):
+            structured.append({"type": question_types[j], "value": None})
+    elif len(structured) > num_questions:
+        structured = structured[:num_questions]
+
+    return structured
 
 
-# If run as script, provide a simple functional interface (no prints); returns list via exit code not supported,
-# so this block is only for manual testing when invoked in REPL or imported by other code.
+# If run as script, provide simple CLI for testing
 if __name__ == "__main__":
     import sys, json
     if len(sys.argv) < 2:
         raise SystemExit("Usage: python fetch_answers_openai.py /path/to/file.pdf [num_questions]")
     pdf = sys.argv[1]
     nq = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    answers = extract_answers_from_pdf(pdf, num_questions=nq)
-    # For convenience during direct runs, write JSON to stdout
+    answers = extract_answers_from_pdf(pdf, num_questions=nq, question_types=(["mcq"] * (nq or 0)))
     sys.stdout.write(json.dumps(answers))
