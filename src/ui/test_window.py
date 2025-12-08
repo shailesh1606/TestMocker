@@ -82,11 +82,30 @@ class TestWindow(QWidget):
         right_layout = QVBoxLayout()
         right_layout.setSpacing(20)
 
-        # Palette
+        # Palette (scrollable)
         self.palette_box = QGroupBox("Question Palette")
         self.palette_box.setFont(QFont("Arial", 11, QFont.Bold))
         palette_vbox = QVBoxLayout()
+        palette_vbox.setContentsMargins(6, 6, 6, 6)
+        palette_vbox.setSpacing(8)
+
+        # Scroll area to hold palette grid
+        self.palette_scroll = QScrollArea()
+        self.palette_scroll.setWidgetResizable(True)
+        self.palette_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.palette_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Show about ~6 rows at a time (adjust as desired)
+        self.palette_scroll.setFixedHeight(240)
+
+        # Content widget for grid
+        palette_content = QWidget()
         self.palette_grid = QGridLayout()
+        self.palette_grid.setContentsMargins(4, 4, 4, 4)
+        self.palette_grid.setHorizontalSpacing(6)
+        self.palette_grid.setVerticalSpacing(6)
+        palette_content.setLayout(self.palette_grid)
+        self.palette_scroll.setWidget(palette_content)
+
         self.question_palette = []
         questions_per_row = 5
         for i in range(self.num_questions):
@@ -97,7 +116,9 @@ class TestWindow(QWidget):
             btn.clicked.connect(lambda checked, idx=i: self.go_to_question(idx))
             self.palette_grid.addWidget(btn, i // questions_per_row, i % questions_per_row)
             self.question_palette.append(btn)
-        palette_vbox.addLayout(self.palette_grid)
+
+        palette_vbox.addWidget(self.palette_scroll)
+
         legend = QLabel(
             "● <span style='color:#bdbdbd'>Not Visited</span>   "
             "● <span style='color:#e57373'>Not Answered</span>   "
