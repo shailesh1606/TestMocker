@@ -46,17 +46,19 @@ class LearningWindow(TestWindow):
     adds hint support and simple hint-usage tracking.
     """
 
-    def __init__(self, pdf_path, time_limit, num_questions):
-        super().__init__(pdf_path, time_limit, num_questions)
+    def __init__(self, pdf_path, time_limit, num_questions, exam_type="Other",
+                 marks_per_correct=1.0, negative_mark=0.0):
+        super().__init__(pdf_path, time_limit, num_questions, exam_type=exam_type,
+                         marks_per_correct=marks_per_correct, negative_mark=negative_mark)
         self.learning_mode = True
-        self.hints_used = {}              # question_index -> count
-        self.hint_limit = 6               # default limit
-        self.user_question_texts = {}     # user-provided context per question
-        self.user_option_texts = {}       # user-provided options per question (list[str])
+        self.hints_used = {}
+        self.hint_limit = 6
+        self.user_question_texts = {}
+        self.user_option_texts = {}
         self._add_learning_controls()
         self._build_hint_panel()
         try:
-            self.setWindowTitle("Learning Mode - TestMocker")
+            self.setWindowTitle(f"Learning Mode — {self.exam_type}")
         except Exception:
             pass
 

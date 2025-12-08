@@ -1,9 +1,60 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QPushButton, QFileDialog, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QFrame, QInputDialog, QMessageBox
+    QMainWindow, QPushButton, QFileDialog, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QFrame,
+    QInputDialog, QMessageBox, QDialog, QFormLayout, QSpinBox, QDoubleSpinBox, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QIcon
 from ui.test_window import TestWindow
+
+class ExamConfigDialog(QDialog):
+    def __init__(self, exam_type, def_q, def_t, def_marks, def_neg, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Configure {exam_type} Test")
+        self.setModal(True)
+        self.resize(420, 220)
+
+        form = QFormLayout(self)
+        form.setContentsMargins(16, 16, 16, 16)
+        form.setSpacing(10)
+
+        self.q_spin = QSpinBox()
+        self.q_spin.setRange(1, 300)
+        self.q_spin.setValue(def_q)
+
+        self.t_spin = QSpinBox()
+        self.t_spin.setRange(1, 600)
+        self.t_spin.setSuffix(" min")
+        self.t_spin.setValue(def_t)
+
+        self.marks_spin = QDoubleSpinBox()
+        self.marks_spin.setRange(0.0, 100.0)
+        self.marks_spin.setDecimals(2)
+        self.marks_spin.setSingleStep(0.5)
+        self.marks_spin.setValue(def_marks)
+
+        self.neg_spin = QDoubleSpinBox()
+        self.neg_spin.setRange(-100.0, 0.0)  # negative marking as a negative value
+        self.neg_spin.setDecimals(2)
+        self.neg_spin.setSingleStep(0.5)
+        self.neg_spin.setValue(def_neg)
+
+        form.addRow("Number of Questions:", self.q_spin)
+        form.addRow("Total Time:", self.t_spin)
+        form.addRow("Marks per Correct:", self.marks_spin)
+        form.addRow("Negative Marks per Incorrect:", self.neg_spin)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def get_values(self):
+        return (
+            int(self.q_spin.value()),
+            int(self.t_spin.value()),
+            float(self.marks_spin.value()),
+            float(self.neg_spin.value()),
+        )
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -143,44 +194,68 @@ class MainWindow(QMainWindow):
             self.label.setText("Please upload a PDF before taking the test.")
             return
 
-        # Ask for number of questions
-        num_questions, ok1 = QInputDialog.getInt(
-            self, "Number of Questions", "Enter the number of questions:", min=1, max=200, value=50
+        exam_options = ["JEE Mains", "JEE Advanced", "NEET", "Other"]
+        exam_type, ok_exam = QInputDialog.getItem(
+            self, "Exam Type", "Select exam type:", exam_options, current=0, editable=False
         )
-        if not ok1:
+        if not ok_exam or not exam_type:
             return
 
-        # Ask for time limit
-        time_limit, ok2 = QInputDialog.getInt(
-            self, "Time Limit", "Enter the time limit (minutes):", min=1, max=300, value=60
-        )
-        if not ok2:
-            return
+        EXAM_DEFAULTS = {
+            "JEE Mains":   {"q": 90,  "t": 180, "marks": 4.0, "neg": -1.0},
+            "JEE Advanced":{"q": 108, "t": 360, "marks": 3.0, "neg": -1.0},
+            "NEET":        {"q": 180, "t": 200, "marks": 4.0, "neg": -1.0},
+            "Other":       {"q": 50,  "t": 60,  "marks": 1.0, "neg":  0.0},
+        }
+        defs = EXAM_DEFAULTS.get(exam_type, EXAM_DEFAULTS["Other"])
 
-        self.test_window = TestWindow(self.uploaded_pdf_path, time_limit, num_questions)
+        dlg = ExamConfigDialog(exam_type, defs["q"], defs["t"], defs["marks"], defs["neg"], parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        num_questions, time_limit, marks_per_correct, negative_mark = dlg.get_values()
+
+        self.test_window = TestWindow(
+            self.uploaded_pdf_path,
+            time_limit=time_limit,
+            num_questions=num_questions,
+            exam_type=exam_type,
+            marks_per_correct=marks_per_correct,
+            negative_mark=negative_mark,
+        )
         self.test_window.show()
 
     def start_learning_mode(self):
-        """Start test in Learning Mode (separate from normal test)."""
         if not self.uploaded_pdf_path:
             self.label.setText("Please upload a PDF before starting Learning Mode.")
             return
 
-        # Ask for number of questions
-        num_questions, ok1 = QInputDialog.getInt(
-            self, "Number of Questions (Learning Mode)", "Enter the number of questions:", min=1, max=200, value=20
+        exam_options = ["JEE Mains", "JEE Advanced", "NEET", "Other"]
+        exam_type, ok_exam = QInputDialog.getItem(
+            self, "Exam Type (Learning Mode)", "Select exam type:", exam_options, current=0, editable=False
         )
-        if not ok1:
+        if not ok_exam or not exam_type:
             return
 
-        # Ask for time limit
-        time_limit, ok2 = QInputDialog.getInt(
-            self, "Time Limit (minutes)", "Enter the time limit (minutes):", min=1, max=300, value=30
-        )
-        if not ok2:
-            return
+        EXAM_DEFAULTS = {
+            "JEE Mains":   {"q": 90,  "t": 180, "marks": 4.0, "neg": -1.0},
+            "JEE Advanced":{"q": 108, "t": 360, "marks": 3.0, "neg": -1.0},
+            "NEET":        {"q": 180, "t": 200, "marks": 4.0, "neg": -1.0},
+            "Other":       {"q": 30,  "t": 45,  "marks": 1.0, "neg":  0.0},
+        }
+        defs = EXAM_DEFAULTS.get(exam_type, EXAM_DEFAULTS["Other"])
 
-        # Create LearningWindow instead of TestWindow
+        dlg = ExamConfigDialog(exam_type, defs["q"], defs["t"], defs["marks"], defs["neg"], parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        num_questions, time_limit, marks_per_correct, negative_mark = dlg.get_values()
+
         from ui.learning_window import LearningWindow
-        self.learning_window = LearningWindow(self.uploaded_pdf_path, time_limit, num_questions)
+        self.learning_window = LearningWindow(
+            self.uploaded_pdf_path,
+            time_limit=time_limit,
+            num_questions=num_questions,
+            exam_type=exam_type,
+            marks_per_correct=marks_per_correct,
+            negative_mark=negative_mark,
+        )
         self.learning_window.show()

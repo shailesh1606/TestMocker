@@ -19,9 +19,14 @@ STATE_COLORS = {
     "answered": "#66bb6a",         # green
     "review": "#7e57c2",           # purple
 }
+
 class TestWindow(QWidget):
-    def __init__(self, pdf_path, time_limit=60, num_questions=10):
+    def __init__(self, pdf_path, time_limit=60, num_questions=10, exam_type="Other",
+                 marks_per_correct=1.0, negative_mark=0.0):
         super().__init__()
+        self.exam_type = exam_type
+        self.marks_per_correct = float(marks_per_correct)
+        self.negative_mark = float(negative_mark)
         self.time_limit = time_limit
         self.num_questions = num_questions
         self.current_question = 0
