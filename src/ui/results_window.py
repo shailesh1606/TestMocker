@@ -88,9 +88,10 @@ def _parse_numeric(s):
 def _compare_answers(user_item, correct_item, numeric_tol=1e-3):
     """
     Compare user vs correct.
-    Returns (is_attempted, is_correct).
+    Returns (is_attempted, is_correct, has_correct_key).
     - is_attempted: user has a non-None value
     - is_correct: based on type-specific comparison
+    - has_correct_key: correct key exists (type+value present)
     """
     u = _normalize_answer_item(user_item)
     c = _normalize_answer_item(correct_item)
@@ -98,46 +99,50 @@ def _compare_answers(user_item, correct_item, numeric_tol=1e-3):
     # Attempted?
     is_attempted = (u is not None and u.get("value") is not None)
 
-    # If no correct key provided, we can't judge correctness.
-    if c is None or c.get("value") is None:
-        return is_attempted, False
+    # Correct key presence?
+    has_correct_key = (c is not None and c.get("value") is not None)
 
-    # If user not attempted, incorrect by definition
+    # If user not attempted, incorrect by definition (for stats), no score change
     if not is_attempted:
-        return False, False
+        return False, False, has_correct_key
+
+    # If no correct key provided, we can't judge correctness.
+    if not has_correct_key:
+        return True, False, False
 
     ut, uv = u.get("type"), u.get("value")
     ct, cv = c.get("type"), c.get("value")
 
     # If types mismatch, treat as incorrect
     if ut != ct:
-        return True, False
+        return True, False, True
 
     if ut == "mcq":
-        return True, (uv == cv)
+        return True, (uv == cv), True
 
     if ut == "numeric":
         u_num = _parse_numeric(uv)
         c_num = _parse_numeric(cv)
         if u_num is None or c_num is None:
             # Fall back to string match if parsing fails
-            return True, (str(uv).strip() == str(cv).strip())
+            return True, (str(uv).strip() == str(cv).strip()), True
         # Absolute or relative tolerance
         if math.isclose(u_num, c_num, rel_tol=1e-6, abs_tol=numeric_tol):
-            return True, True
-        return True, False
+            return True, True, True
+        return True, False, True
 
     if ut == "text":
         # Case-insensitive, collapse whitespace
         u_norm = " ".join(str(uv).split()).strip().lower()
         c_norm = " ".join(str(cv).split()).strip().lower()
-        return True, (u_norm == c_norm)
+        return True, (u_norm == c_norm), True
 
-    return True, False
+    return True, False, True
 
 
 class ResultsWindow(QWidget):
-    def __init__(self, answers, correct_answers=None, time_taken=0, total_time=60):
+    def __init__(self, answers, correct_answers=None, time_taken=0, total_time=60,
+                 marks_per_correct=1.0, negative_mark=0.0, exam_type="Other"):
         super().__init__()
         # Store as provided; normalization happens in comparison and display
         self.answers = answers or []
@@ -145,6 +150,9 @@ class ResultsWindow(QWidget):
         self.time_taken = time_taken
         self.total_time = total_time
         self.num_questions = len(self.answers)
+        self.marks_per_correct = float(marks_per_correct)
+        self.negative_mark = float(negative_mark)
+        self.exam_type = exam_type
         
         self.setWindowTitle('Test Results')
         self.setGeometry(200, 200, 900, 640)
@@ -165,18 +173,28 @@ class ResultsWindow(QWidget):
         # Compute statistics
         attempted = 0
         correct = 0
+        incorrect_scored = 0
+        questions_with_key = 0
         for i in range(self.num_questions):
-            is_attempted, is_correct = _compare_answers(self.answers[i], self.correct_answers[i])
+            is_attempted, is_correct, has_key = _compare_answers(self.answers[i], self.correct_answers[i])
             if is_attempted:
                 attempted += 1
             if is_correct:
                 correct += 1
+            if has_key:
+                questions_with_key += 1
+                # Count incorrect only when a correct key exists and user attempted but was wrong
+                if is_attempted and not is_correct:
+                    incorrect_scored += 1
 
         incorrect = max(0, attempted - correct)
         not_attempted = max(0, self.num_questions - attempted)
         overall_accuracy = (correct / self.num_questions * 100.0) if self.num_questions > 0 else 0.0
         attempted_accuracy = (correct / attempted * 100.0) if attempted > 0 else 0.0
-
+        # Score using marking scheme
+        total_score = (correct * self.marks_per_correct) + (incorrect_scored * self.negative_mark)
+        max_score = self.num_questions * self.marks_per_correct  # simple max assuming uniform marks
+        
         # Summary section
         summary_box = QGroupBox("Test Summary")
         summary_box.setFont(QFont("Arial", 14, QFont.Bold))
@@ -224,10 +242,13 @@ class ResultsWindow(QWidget):
         
         # Score and time
         score_time_layout = QHBoxLayout()
-        score_label = QLabel(f"Score: {correct}/{self.num_questions}")
+        score_label = QLabel(f"Score: {total_score:.2f} / {max_score:.2f}")
         score_label.setFont(QFont("Arial", 16, QFont.Bold))
         score_label.setStyleSheet("color: #1976d2;")
         score_time_layout.addWidget(score_label)
+        scheme_label = QLabel(f"Marking: +{self.marks_per_correct} per correct, {self.negative_mark} per incorrect")
+        scheme_label.setFont(QFont("Arial", 11))
+        score_time_layout.addWidget(scheme_label)
         
         time_label = QLabel(f"Time Taken: {self.format_time(self.time_taken)} / {self.format_time(self.total_time)}")
         time_label.setFont(QFont("Arial", 12))
@@ -275,12 +296,12 @@ class ResultsWindow(QWidget):
             correct_item.setTextAlignment(Qt.AlignCenter)
 
             # Correctness
-            is_attempted, is_correct = _compare_answers(self.answers[i], self.correct_answers[i])
+            is_attempted, is_correct, has_key = _compare_answers(self.answers[i], self.correct_answers[i])
 
             if is_correct:
                 user_item.setBackground(Qt.green)
                 user_item.setForeground(Qt.white)
-            elif is_attempted and correct_disp != "--":
+            elif is_attempted and has_key:
                 user_item.setBackground(Qt.red)
                 user_item.setForeground(Qt.white)
                 correct_item.setBackground(Qt.green)

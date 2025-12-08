@@ -466,7 +466,10 @@ class TestWindow(QWidget):
                 answers=self.answers,
                 correct_answers=correct_answers,
                 time_taken=time_taken_seconds,
-                total_time=initial_time_seconds
+                total_time=initial_time_seconds,
+                marks_per_correct=self.marks_per_correct,
+                negative_mark=self.negative_mark,
+                exam_type=self.exam_type,
             )
             self.results_window.show()
         else:
