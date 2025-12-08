@@ -41,39 +41,53 @@ class ResultsWindow(QWidget):
                      if ans is not None and ans == self.correct_answers[i])
         incorrect = attempted - correct
         not_attempted = self.num_questions - attempted
+        skipped = not_attempted  # alias for clarity
+        overall_accuracy = (correct / self.num_questions * 100.0) if self.num_questions > 0 else 0.0
+        attempted_accuracy = (correct / attempted * 100.0) if attempted > 0 else 0.0
         
         # Summary labels
-        stats_layout = QHBoxLayout()
-        
+        stats_layout_top = QHBoxLayout()
         total_label = QLabel(f"Total Questions: {self.num_questions}")
         total_label.setFont(QFont("Arial", 12, QFont.Bold))
-        stats_layout.addWidget(total_label)
-        
+        stats_layout_top.addWidget(total_label)
+
         attempted_label = QLabel(f"Attempted: {attempted}")
         attempted_label.setFont(QFont("Arial", 12, QFont.Bold))
         attempted_label.setStyleSheet("color: #1976d2;")
-        stats_layout.addWidget(attempted_label)
-        
+        stats_layout_top.addWidget(attempted_label)
+
+        not_attempted_label = QLabel(f"Unattempted: {not_attempted}")
+        not_attempted_label.setFont(QFont("Arial", 12, QFont.Bold))
+        not_attempted_label.setStyleSheet("color: #9e9e9e;")
+        stats_layout_top.addWidget(not_attempted_label)
+
+        summary_layout.addLayout(stats_layout_top)
+
+        stats_layout_bottom = QHBoxLayout()
         correct_label = QLabel(f"Correct: {correct}")
         correct_label.setFont(QFont("Arial", 12, QFont.Bold))
         correct_label.setStyleSheet("color: #43a047;")
-        stats_layout.addWidget(correct_label)
+        stats_layout_bottom.addWidget(correct_label)
         
         incorrect_label = QLabel(f"Incorrect: {incorrect}")
         incorrect_label.setFont(QFont("Arial", 12, QFont.Bold))
         incorrect_label.setStyleSheet("color: #e53935;")
-        stats_layout.addWidget(incorrect_label)
-        
-        not_attempted_label = QLabel(f"Not Attempted: {not_attempted}")
-        not_attempted_label.setFont(QFont("Arial", 12, QFont.Bold))
-        not_attempted_label.setStyleSheet("color: #9e9e9e;")
-        stats_layout.addWidget(not_attempted_label)
-        
-        summary_layout.addLayout(stats_layout)
+        stats_layout_bottom.addWidget(incorrect_label)
+
+        accuracy_label = QLabel(f"Overall Accuracy: {overall_accuracy:.1f}%")
+        accuracy_label.setFont(QFont("Arial", 12, QFont.Bold))
+        accuracy_label.setStyleSheet("color: #1976d2;")
+        stats_layout_bottom.addWidget(accuracy_label)
+
+        attempted_acc_label = QLabel(f"Accuracy on Attempted: {attempted_accuracy:.1f}%")
+        attempted_acc_label.setFont(QFont("Arial", 12, QFont.Bold))
+        attempted_acc_label.setStyleSheet("color: #00796b;")
+        stats_layout_bottom.addWidget(attempted_acc_label)
+
+        summary_layout.addLayout(stats_layout_bottom)
         
         # Score and time
         score_time_layout = QHBoxLayout()
-        
         score_label = QLabel(f"Score: {correct}/{self.num_questions}")
         score_label.setFont(QFont("Arial", 16, QFont.Bold))
         score_label.setStyleSheet("color: #1976d2;")
