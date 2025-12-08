@@ -1,21 +1,153 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QTableWidget, QTableWidgetItem, QGroupBox, QScrollArea
+    QTableWidget, QTableWidgetItem, QGroupBox
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QPixmap
+from PyQt5.QtGui import QFont
+import math
+from fractions import Fraction
+
+MCQ_MAP_IDX_TO_LETTER = {0: "A", 1: "B", 2: "C", 3: "D"}
+MCQ_MAP_LETTER_TO_IDX = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+def _normalize_answer_item(item):
+    """
+    Normalize an answer record to {"type": "mcq"|"numeric"|"text", "value": ...} or None.
+    Accepts legacy formats: None, int (MCQ index), or string.
+    """
+    if item is None:
+        return None
+
+    # Already structured
+    if isinstance(item, dict) and "type" in item:
+        t = str(item.get("type", "")).lower()
+        v = item.get("value", None)
+        if t == "mcq":
+            # Normalize mcq value to 0..3
+            if isinstance(v, int):
+                return {"type": "mcq", "value": v if 0 <= v <= 3 else None}
+            if isinstance(v, str):
+                s = v.strip().upper()
+                if s in MCQ_MAP_LETTER_TO_IDX:
+                    return {"type": "mcq", "value": MCQ_MAP_LETTER_TO_IDX[s]}
+                # try first char
+                return {"type": "mcq", "value": MCQ_MAP_LETTER_TO_IDX.get(s[:1], None)}
+            return {"type": "mcq", "value": None}
+        if t == "numeric":
+            # Keep string form; strip spaces
+            if v is None:
+                return {"type": "numeric", "value": None}
+            return {"type": "numeric", "value": str(v).strip()}
+        if t == "text":
+            if v is None:
+                return {"type": "text", "value": None}
+            return {"type": "text", "value": str(v).strip()}
+        # Unknown type -> None
+        return None
+
+    # Legacy: int -> MCQ index
+    if isinstance(item, int):
+        return {"type": "mcq", "value": item if 0 <= item <= 3 else None}
+    # Legacy: string value (assume text)
+    if isinstance(item, str):
+        s = item.strip()
+        # If single letter A-D, treat as MCQ
+        if len(s) == 1 and s.upper() in MCQ_MAP_LETTER_TO_IDX:
+            return {"type": "mcq", "value": MCQ_MAP_LETTER_TO_IDX[s.upper()]}
+        return {"type": "text", "value": s}
+
+    return None
+
+def _display_value(item):
+    """Return a user-friendly string for table display."""
+    if item is None:
+        return "--"
+    t = item.get("type")
+    v = item.get("value")
+    if v is None:
+        return "--"
+    if t == "mcq":
+        return MCQ_MAP_IDX_TO_LETTER.get(v, "--")
+    return str(v)
+
+def _parse_numeric(s):
+    """Parse numeric string to float; supports integers, decimals, and simple fractions like 1/3."""
+    if s is None:
+        return None
+    s = str(s).strip().replace(" ", "")
+    if s == "":
+        return None
+    try:
+        if "/" in s:
+            # Handle simple fraction a/b (no mixed numbers)
+            return float(Fraction(s))
+        return float(s)
+    except Exception:
+        return None
+
+def _compare_answers(user_item, correct_item, numeric_tol=1e-3):
+    """
+    Compare user vs correct.
+    Returns (is_attempted, is_correct).
+    - is_attempted: user has a non-None value
+    - is_correct: based on type-specific comparison
+    """
+    u = _normalize_answer_item(user_item)
+    c = _normalize_answer_item(correct_item)
+
+    # Attempted?
+    is_attempted = (u is not None and u.get("value") is not None)
+
+    # If no correct key provided, we can't judge correctness.
+    if c is None or c.get("value") is None:
+        return is_attempted, False
+
+    # If user not attempted, incorrect by definition
+    if not is_attempted:
+        return False, False
+
+    ut, uv = u.get("type"), u.get("value")
+    ct, cv = c.get("type"), c.get("value")
+
+    # If types mismatch, treat as incorrect
+    if ut != ct:
+        return True, False
+
+    if ut == "mcq":
+        return True, (uv == cv)
+
+    if ut == "numeric":
+        u_num = _parse_numeric(uv)
+        c_num = _parse_numeric(cv)
+        if u_num is None or c_num is None:
+            # Fall back to string match if parsing fails
+            return True, (str(uv).strip() == str(cv).strip())
+        # Absolute or relative tolerance
+        if math.isclose(u_num, c_num, rel_tol=1e-6, abs_tol=numeric_tol):
+            return True, True
+        return True, False
+
+    if ut == "text":
+        # Case-insensitive, collapse whitespace
+        u_norm = " ".join(str(uv).split()).strip().lower()
+        c_norm = " ".join(str(cv).split()).strip().lower()
+        return True, (u_norm == c_norm)
+
+    return True, False
+
 
 class ResultsWindow(QWidget):
     def __init__(self, answers, correct_answers=None, time_taken=0, total_time=60):
         super().__init__()
-        self.answers = answers
-        self.correct_answers = correct_answers or [0] * len(answers)  # Default correct answers
+        # Store as provided; normalization happens in comparison and display
+        self.answers = answers or []
+        self.correct_answers = correct_answers or [None] * len(self.answers)
         self.time_taken = time_taken
         self.total_time = total_time
-        self.num_questions = len(answers)
+        self.num_questions = len(self.answers)
         
         self.setWindowTitle('Test Results')
-        self.setGeometry(200, 200, 800, 600)
+        self.setGeometry(200, 200, 900, 640)
         self.init_ui()
     
     def init_ui(self):
@@ -30,22 +162,26 @@ class ResultsWindow(QWidget):
         title_label.setStyleSheet("color: #1976d2; margin-bottom: 20px;")
         main_layout.addWidget(title_label)
         
+        # Compute statistics
+        attempted = 0
+        correct = 0
+        for i in range(self.num_questions):
+            is_attempted, is_correct = _compare_answers(self.answers[i], self.correct_answers[i])
+            if is_attempted:
+                attempted += 1
+            if is_correct:
+                correct += 1
+
+        incorrect = max(0, attempted - correct)
+        not_attempted = max(0, self.num_questions - attempted)
+        overall_accuracy = (correct / self.num_questions * 100.0) if self.num_questions > 0 else 0.0
+        attempted_accuracy = (correct / attempted * 100.0) if attempted > 0 else 0.0
+
         # Summary section
         summary_box = QGroupBox("Test Summary")
         summary_box.setFont(QFont("Arial", 14, QFont.Bold))
         summary_layout = QVBoxLayout()
         
-        # Calculate statistics
-        attempted = sum(1 for ans in self.answers if ans is not None)
-        correct = sum(1 for i, ans in enumerate(self.answers) 
-                     if ans is not None and ans == self.correct_answers[i])
-        incorrect = attempted - correct
-        not_attempted = self.num_questions - attempted
-        skipped = not_attempted  # alias for clarity
-        overall_accuracy = (correct / self.num_questions * 100.0) if self.num_questions > 0 else 0.0
-        attempted_accuracy = (correct / attempted * 100.0) if attempted > 0 else 0.0
-        
-        # Summary labels
         stats_layout_top = QHBoxLayout()
         total_label = QLabel(f"Total Questions: {self.num_questions}")
         total_label.setFont(QFont("Arial", 12, QFont.Bold))
@@ -56,7 +192,7 @@ class ResultsWindow(QWidget):
         attempted_label.setStyleSheet("color: #1976d2;")
         stats_layout_top.addWidget(attempted_label)
 
-        not_attempted_label = QLabel(f"Unattempted: {not_attempted}")
+        not_attempted_label = QLabel(f"Unattempted (Skipped): {not_attempted}")
         not_attempted_label.setFont(QFont("Arial", 12, QFont.Bold))
         not_attempted_label.setStyleSheet("color: #9e9e9e;")
         stats_layout_top.addWidget(not_attempted_label)
@@ -106,45 +242,55 @@ class ResultsWindow(QWidget):
         analysis_box.setFont(QFont("Arial", 14, QFont.Bold))
         analysis_layout = QVBoxLayout()
 
-        table = QTableWidget(self.num_questions, 3)
-        table.setHorizontalHeaderLabels(["Question", "Your Answer", "Correct Answer"])
+        table = QTableWidget(self.num_questions, 4)
+        table.setHorizontalHeaderLabels(["Question", "Type", "Your Answer", "Correct Answer"])
         table.horizontalHeader().setStretchLastSection(True)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionMode(QTableWidget.NoSelection)
         table.verticalHeader().setVisible(False)
 
-        answer_map = {None: "--", 0: "A", 1: "B", 2: "C", 3: "D"}
-
         for i in range(self.num_questions):
+            # Normalize items
+            u_item = _normalize_answer_item(self.answers[i])
+            c_item = _normalize_answer_item(self.correct_answers[i])
+
             # Question number
             q_item = QTableWidgetItem(f"Q{i+1}")
             q_item.setTextAlignment(Qt.AlignCenter)
             table.setItem(i, 0, q_item)
 
-            # User answer
-            user_ans = answer_map.get(self.answers[i], "--")
-            user_item = QTableWidgetItem(user_ans)
-            user_item.setTextAlignment(Qt.AlignCenter)
+            # Type
+            typ = (u_item or c_item or {"type": None}).get("type")
+            type_str = typ.upper() if typ else "--"
+            type_item = QTableWidgetItem(type_str)
+            type_item.setTextAlignment(Qt.AlignCenter)
+            table.setItem(i, 1, type_item)
 
-            # Correct answer
-            correct_ans = answer_map.get(self.correct_answers[i], "--")
-            correct_item = QTableWidgetItem(correct_ans)
+            # Answers (display)
+            user_disp = _display_value(u_item)
+            correct_disp = _display_value(c_item)
+            user_item = QTableWidgetItem(user_disp)
+            user_item.setTextAlignment(Qt.AlignCenter)
+            correct_item = QTableWidgetItem(correct_disp)
             correct_item.setTextAlignment(Qt.AlignCenter)
 
-            # Highlighting
-            if self.answers[i] is not None and self.answers[i] == self.correct_answers[i]:
+            # Correctness
+            is_attempted, is_correct = _compare_answers(self.answers[i], self.correct_answers[i])
+
+            if is_correct:
                 user_item.setBackground(Qt.green)
                 user_item.setForeground(Qt.white)
-            elif self.answers[i] is not None and self.correct_answers[i] is not None:
+            elif is_attempted and correct_disp != "--":
                 user_item.setBackground(Qt.red)
                 user_item.setForeground(Qt.white)
                 correct_item.setBackground(Qt.green)
                 correct_item.setForeground(Qt.white)
-            elif self.answers[i] is None:
+            else:
+                # Not attempted
                 user_item.setBackground(Qt.lightGray)
 
-            table.setItem(i, 1, user_item)
-            table.setItem(i, 2, correct_item)
+            table.setItem(i, 2, user_item)
+            table.setItem(i, 3, correct_item)
 
         table.resizeColumnsToContents()
         analysis_layout.addWidget(table)
