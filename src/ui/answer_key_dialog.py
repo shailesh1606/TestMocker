@@ -7,22 +7,26 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QDoubleValidator
 import os
 
-# Add worker thread class
 class ExtractWorker(QThread):
     finished = pyqtSignal(object)   # emits raw answers list on success
     error = pyqtSignal(str)         # emits error message on failure
 
-    def __init__(self, pdf_path, api_key, num_questions, question_types=None):
+    def __init__(self, pdf_path, api_key, num_questions, question_types):
         super().__init__()
         self.pdf_path = pdf_path
         self.api_key = api_key
         self.num_questions = num_questions
         self.question_types = question_types
+
     def run(self):
         try:
-            # import here to keep main thread imports minimal
             from scripts.fetch_answers_openai import extract_answers_from_pdf
-            raw = extract_answers_from_pdf(self.pdf_path, api_key=self.api_key, num_questions=self.num_questions, question_types=self.question_types)
+            raw = extract_answers_from_pdf(
+                self.pdf_path,
+                api_key=self.api_key,
+                num_questions=self.num_questions,
+                question_types=self.question_types
+            )
             self.finished.emit(raw)
         except Exception as e:
             self.error.emit(str(e))
@@ -306,42 +310,62 @@ class AnswerKeyDialog(QDialog):
         self._worker.start()
 
     def _on_extract_success(self, raw_answers):
-        # Called in main thread. raw_answers is typically MCQ choices only.
         try:
             mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+            def normalize_item(it, qtype):
+                qt = qtype or "mcq"
+                if qt == "mcq":
+                    # Accept dict with value, list/tuple, str, or int index
+                    if isinstance(it, dict):
+                        v = it.get("value", None)
+                        if isinstance(v, int) and 0 <= v <= 3:
+                            return {"type": "mcq", "value": v}
+                        if isinstance(v, str):
+                            return {"type": "mcq", "value": mapping.get(v.strip().upper()[:1], None)}
+                    if isinstance(it, (list, tuple)):
+                        first = it[0] if it else None
+                        if isinstance(first, str):
+                            return {"type": "mcq", "value": mapping.get(first.strip().upper()[:1], None)}
+                    if isinstance(it, str):
+                        return {"type": "mcq", "value": mapping.get(it.strip().upper()[:1], None)}
+                    if isinstance(it, int) and 0 <= it <= 3:
+                        return {"type": "mcq", "value": it}
+                    return {"type": "mcq", "value": None}
+                if qt == "numeric":
+                    # Keep as stripped string; allow any numeric-like text
+                    if isinstance(it, dict):
+                        v = it.get("value", None)
+                        return {"type": "numeric", "value": None if v is None else str(v).strip()}
+                    return {"type": "numeric", "value": None if it is None else str(it).strip()}
+                if qt == "text":
+                    if isinstance(it, dict):
+                        v = it.get("value", None)
+                        return {"type": "text", "value": None if v is None else str(v).strip()}
+                    return {"type": "text", "value": None if it is None else str(it).strip()}
+                # Fallback
+                return {"type": qt, "value": None}
+            
             structured = []
             for i in range(self.num_questions):
                 qtype = self.question_types[i]
-                if i < len(raw_answers) and qtype == "mcq":
-                    it = raw_answers[i]
-                    idx = None
-                    if it is None:
-                        idx = None
-                    elif isinstance(it, (list, tuple)):
-                        first = it[0] if it else None
-                        idx = mapping.get(first.upper(), None) if isinstance(first, str) else None
-                    elif isinstance(it, str):
-                        s = it.strip().upper()
-                        idx = mapping.get(s[0] if s else s, None)
-                    structured.append({"type": "mcq", "value": idx})
+                if i < len(raw_answers):
+                    structured.append(normalize_item(raw_answers[i], qtype))
                 else:
-                    # For non-MCQ (or missing), leave None to be filled manually if needed
                     structured.append({"type": qtype, "value": None})
 
-            # adjust length
             if len(structured) < self.num_questions:
-                structured += [{"type": self.question_types[j], "value": None} for j in range(len(structured), self.num_questions)]
+                 structured += [{"type": self.question_types[j], "value": None} for j in range(len(structured), self.num_questions)]
             elif len(structured) > self.num_questions:
-                structured = structured[:self.num_questions]
+                 structured = structured[:self.num_questions]
 
             self.answers = structured
             self.method = "auto"
             if hasattr(self, "_progress"):
-                self._progress.close()
-            QMessageBox.information(self, "Success", "Answer key extracted successfully.")
+                 self._progress.close()
+            QMessageBox.information(self, "Success", "Answer key extracted.")
             self.accept()
         finally:
-            # ensure thread cleaned up
             try:
                 self._worker.quit()
                 self._worker.wait(100)
