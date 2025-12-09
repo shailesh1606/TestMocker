@@ -34,3 +34,6 @@ coverage.xml
 # Build artifacts
 build/
 dist/
+
+# Ignore these files
+test_pdfs/
