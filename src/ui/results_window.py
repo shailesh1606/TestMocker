@@ -1,11 +1,22 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QTableWidget, QTableWidgetItem, QGroupBox
+    QTableWidget, QTableWidgetItem, QGroupBox, QScrollArea, QWidget as QtWidget
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QPixmap
 import math
 from fractions import Fraction
+import io
+
+# Safe matplotlib (Agg only, no Qt backends, no pyplot)
+MATPLOTLIB_AVAILABLE = False
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # force non-GUI backend
+    from matplotlib.figure import Figure
+    MATPLOTLIB_AVAILABLE = True
+except Exception:
+    MATPLOTLIB_AVAILABLE = False
 
 MCQ_MAP_IDX_TO_LETTER = {0: "A", 1: "B", 2: "C", 3: "D"}
 MCQ_MAP_LETTER_TO_IDX = {"A": 0, "B": 1, "C": 2, "D": 3}
@@ -54,9 +65,7 @@ def _normalize_answer_item(item):
         # If single letter A-D, treat as MCQ
         if len(s) == 1 and s.upper() in MCQ_MAP_LETTER_TO_IDX:
             return {"type": "mcq", "value": MCQ_MAP_LETTER_TO_IDX[s.upper()]}
-        return {"type": "text", "value": s}
-
-    return None
+    return {"type": "text", "value": item} if isinstance(item, str) else None
 
 def _display_value(item):
     """Return a user-friendly string for table display."""
@@ -155,20 +164,24 @@ class ResultsWindow(QWidget):
         self.exam_type = exam_type
         
         self.setWindowTitle('Test Results')
-        self.setGeometry(200, 200, 900, 640)
+        self.setGeometry(200, 200, 1100, 680)
         self.init_ui()
     
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(20)
-        
+        # Two-column layout: left (summary + table), right (Analysis scrollable)
+        main_hbox = QHBoxLayout(self)
+        main_hbox.setContentsMargins(16, 16, 16, 16)
+        main_hbox.setSpacing(16)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(16)
+
         # Title
         title_label = QLabel("Test Results")
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setFont(QFont("Arial", 24, QFont.Bold))
-        title_label.setStyleSheet("color: #1976d2; margin-bottom: 20px;")
-        main_layout.addWidget(title_label)
+        title_label.setStyleSheet("color: #1976d2; margin-bottom: 10px;")
+        left_col.addWidget(title_label)
         
         # Compute statistics
         attempted = 0
@@ -194,8 +207,8 @@ class ResultsWindow(QWidget):
         # Score using marking scheme
         total_score = (correct * self.marks_per_correct) + (incorrect_scored * self.negative_mark)
         max_score = self.num_questions * self.marks_per_correct  # simple max assuming uniform marks
-        
-        # Summary section
+
+        # Summary section (left)
         summary_box = QGroupBox("Test Summary")
         summary_box.setFont(QFont("Arial", 14, QFont.Bold))
         summary_layout = QVBoxLayout()
@@ -256,9 +269,9 @@ class ResultsWindow(QWidget):
         
         summary_layout.addLayout(score_time_layout)
         summary_box.setLayout(summary_layout)
-        main_layout.addWidget(summary_box)
+        left_col.addWidget(summary_box)
         
-        # Question-wise analysis
+        # Question-wise analysis table (left)
         analysis_box = QGroupBox("Question Analysis")
         analysis_box.setFont(QFont("Arial", 14, QFont.Bold))
         analysis_layout = QVBoxLayout()
@@ -316,19 +329,163 @@ class ResultsWindow(QWidget):
         table.resizeColumnsToContents()
         analysis_layout.addWidget(table)
         analysis_box.setLayout(analysis_layout)
-        main_layout.addWidget(analysis_box)
-        
-        # Action buttons
+        left_col.addWidget(analysis_box)
+
+        # Right column: Analysis (scrollable)
+        right_col = QVBoxLayout()
+        right_col.setSpacing(10)
+
+        analysis_group = QGroupBox("Analysis")
+        analysis_group.setFont(QFont("Arial", 14, QFont.Bold))
+        analysis_group_layout = QVBoxLayout()
+        analysis_group_layout.setContentsMargins(8, 8, 8, 8)
+        analysis_group.setLayout(analysis_group_layout)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        scroll_content = QtWidget()
+        sc_layout = QVBoxLayout(scroll_content)
+        sc_layout.setSpacing(12)
+
+        # Score chip
+        score_chip = QLabel(f"{total_score:.2f}/{max_score:.2f}")
+        score_chip.setAlignment(Qt.AlignCenter)
+        score_chip.setFont(QFont("Arial", 12, QFont.Bold))
+        score_chip.setStyleSheet("background-color:#e3f2fd;color:#1565c0;padding:6px 10px;border-radius:12px;")
+        chip_row = QHBoxLayout()
+        chip_row.addWidget(QLabel("Score"))
+        chip_row.addStretch()
+        chip_row.addWidget(score_chip)
+        sc_layout.addLayout(chip_row)
+
+        # Pie chart (Correct/Wrong/Not Attempted) rendered to PNG via Agg
+        correct_cnt = correct
+        wrong_cnt = incorrect
+        not_attempt_cnt = not_attempted
+        pie_counts = [correct_cnt, wrong_cnt, not_attempt_cnt]
+        pie_colors = ["#43a047", "#e53935", "#bdbdbd"]
+
+        if MATPLOTLIB_AVAILABLE:
+            try:
+                fig = Figure(figsize=(3.0, 3.0), dpi=140)
+                ax = fig.add_subplot(111)
+                total = sum(pie_counts) if sum(pie_counts) > 0 else 1
+                wedges, _ = ax.pie(
+                    pie_counts,
+                    colors=pie_colors,
+                    startangle=90,
+                    wedgeprops=dict(width=0.35, edgecolor="white")
+                )
+                ax.set(aspect="equal")
+                for w, c in zip(wedges, pie_counts):
+                    if total == 0 or c == 0:
+                        continue
+                    ang = (w.theta2 + w.theta1) / 2.0
+                    x, y = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+                    pct = 100.0 * c / total
+                    ax.text(x*0.8, y*0.8, f"{pct:.0f}%", ha="center", va="center", fontsize=9, color="#333")
+                fig.tight_layout()
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", transparent=True)
+                buf.seek(0)
+                pix = QPixmap()
+                if pix.loadFromData(buf.getvalue(), "PNG"):
+                    img_lbl = QLabel()
+                    img_lbl.setAlignment(Qt.AlignCenter)
+                    img_lbl.setPixmap(pix)
+                    sc_layout.addWidget(img_lbl, alignment=Qt.AlignCenter)
+                else:
+                    fallback = QLabel("Chart rendering failed.")
+                    fallback.setAlignment(Qt.AlignCenter)
+                    fallback.setStyleSheet("color:#757575;")
+                    sc_layout.addWidget(fallback)
+            except Exception:
+                fallback = QLabel("Chart rendering failed.")
+                fallback.setAlignment(Qt.AlignCenter)
+                fallback.setStyleSheet("color:#757575;")
+                sc_layout.addWidget(fallback)
+        else:
+            fallback = QLabel("Install matplotlib to see the chart.")
+            fallback.setAlignment(Qt.AlignCenter)
+            fallback.setStyleSheet("color:#757575;")
+            sc_layout.addWidget(fallback)
+
+        # Legend-like labels and extra stats
+        def pct_str(c):
+            return f"{(c / self.num_questions * 100.0):.2f}%" if self.num_questions > 0 else "0.00%"
+
+        legend_layout = QVBoxLayout()
+        lbl_correct = QLabel(f"Correct {correct_cnt}  ({pct_str(correct_cnt)})")
+        lbl_correct.setStyleSheet("color:#43a047; font-weight:600;")
+        legend_layout.addWidget(lbl_correct)
+
+        lbl_wrong = QLabel(f"Wrong {wrong_cnt}  ({pct_str(wrong_cnt)})")
+        lbl_wrong.setStyleSheet("color:#e53935; font-weight:600;")
+        legend_layout.addWidget(lbl_wrong)
+
+        lbl_na = QLabel(f"Not Attempt {not_attempt_cnt}  ({pct_str(not_attempt_cnt)})")
+        lbl_na.setStyleSheet("color:#9e9e9e; font-weight:600;")
+        legend_layout.addWidget(lbl_na)
+
+        sc_layout.addLayout(legend_layout)
+
+        # Additional stats (like the example)
+        time_row = QHBoxLayout()
+        time_row.addWidget(QLabel("Time"))
+        time_row.addStretch()
+        tval = QLabel(self.format_time(self.time_taken))
+        tval.setStyleSheet("font-weight:600;")
+        time_row.addWidget(tval)
+        sc_layout.addLayout(time_row)
+
+        acc_row = QHBoxLayout()
+        acc_row.addWidget(QLabel("Accuracy"))
+        acc_row.addStretch()
+        aval = QLabel(f"{overall_accuracy:.2f}%")
+        aval.setStyleSheet("font-weight:600;")
+        acc_row.addWidget(aval)
+        sc_layout.addLayout(acc_row)
+
+        att_row = QHBoxLayout()
+        att_row.addWidget(QLabel("Attempted"))
+        att_row.addStretch()
+        att_val = QLabel(f"{attempted}/{self.num_questions}")
+        att_val.setStyleSheet("font-weight:600;")
+        att_row.addWidget(att_val)
+        sc_layout.addLayout(att_row)
+
+        neg_row = QHBoxLayout()
+        neg_row.addWidget(QLabel("Negative Marks"))
+        neg_row.addStretch()
+        neg_total = incorrect_scored * abs(self.negative_mark) if self.negative_mark < 0 else incorrect_scored * self.negative_mark
+        neg_val = QLabel(f"{neg_total:.2f}/{(self.num_questions * abs(self.negative_mark)):.2f}")
+        neg_val.setStyleSheet("font-weight:600;")
+        neg_row.addWidget(neg_val)
+        sc_layout.addLayout(neg_row)
+
+        scroll.setWidget(scroll_content)
+        analysis_group_layout.addWidget(scroll)
+        analysis_group.setLayout(analysis_group_layout)
+        right_col.addWidget(analysis_group)
+
+        # Bottom buttons spanning full width (attach to left column for consistency)
         button_layout = QHBoxLayout()
-        
         close_btn = QPushButton("Close")
         close_btn.setFont(QFont("Arial", 12, QFont.Bold))
         close_btn.setStyleSheet("background-color: #e53935; color: white; padding: 10px 20px; border-radius: 5px;")
         close_btn.clicked.connect(self.close)
         button_layout.addWidget(close_btn)
-        
         button_layout.addStretch()
-        main_layout.addLayout(button_layout)
+
+        # Assemble columns
+        left_container = QtWidget(); left_container.setLayout(left_col)
+        right_container = QtWidget(); right_container.setLayout(right_col)
+        main_hbox.addWidget(left_container, stretch=3)
+        main_hbox.addWidget(right_container, stretch=2)
+        # Add bottom buttons under left column
+        left_col.addLayout(button_layout)
     
     def format_time(self, seconds):
         hours = seconds // 3600
