@@ -96,15 +96,15 @@ class AnswerKeyDialog(QDialog):
         manual_box.setLayout(manual_layout)
         
         # Auto extract method
-        auto_box = QGroupBox("Auto Extract (Experimental)")
+        auto_box = QGroupBox("Auto Extract")
         auto_box.setStyleSheet("QGroupBox { font-weight: bold; color: #ff9800; }")
         auto_layout = QVBoxLayout()
-        auto_desc = QLabel("• Extract from answer key PDF (MCQ-only)\n• May have accuracy issues\n• Requires OpenAI API")
+        auto_desc = QLabel("• Extract from answer key PDF\n• May have accuracy issues\n• Requires OpenAI API")
         auto_desc.setFont(QFont("Arial", 11))
         auto_desc.setStyleSheet("color: #666; margin: 10px;")
         auto_layout.addWidget(auto_desc)
         
-        auto_btn = QPushButton("Try Auto Extract")
+        auto_btn = QPushButton("Use Auto Extract")
         auto_btn.setFont(QFont("Arial", 12, QFont.Bold))
         auto_btn.setStyleSheet("""
             QPushButton {
@@ -316,7 +316,6 @@ class AnswerKeyDialog(QDialog):
             def normalize_item(it, qtype):
                 qt = qtype or "mcq"
                 if qt == "mcq":
-                    # Accept dict with value, list/tuple, str, or int index
                     if isinstance(it, dict):
                         v = it.get("value", None)
                         if isinstance(v, int) and 0 <= v <= 3:
@@ -333,7 +332,6 @@ class AnswerKeyDialog(QDialog):
                         return {"type": "mcq", "value": it}
                     return {"type": "mcq", "value": None}
                 if qt == "numeric":
-                    # Keep as stripped string; allow any numeric-like text
                     if isinstance(it, dict):
                         v = it.get("value", None)
                         return {"type": "numeric", "value": None if v is None else str(v).strip()}
@@ -343,7 +341,6 @@ class AnswerKeyDialog(QDialog):
                         v = it.get("value", None)
                         return {"type": "text", "value": None if v is None else str(v).strip()}
                     return {"type": "text", "value": None if it is None else str(it).strip()}
-                # Fallback
                 return {"type": qt, "value": None}
             
             structured = []
@@ -355,16 +352,19 @@ class AnswerKeyDialog(QDialog):
                     structured.append({"type": qtype, "value": None})
 
             if len(structured) < self.num_questions:
-                 structured += [{"type": self.question_types[j], "value": None} for j in range(len(structured), self.num_questions)]
+                structured += [{"type": self.question_types[j], "value": None} for j in range(len(structured), self.num_questions)]
             elif len(structured) > self.num_questions:
-                 structured = structured[:self.num_questions]
+                structured = structured[:self.num_questions]
 
             self.answers = structured
-            self.method = "auto"
+            # Prefill manual inputs and keep dialog open for review/edit
+            self.populate_manual_inputs(structured)
+            self.manual_entry_widget.show()
+            self.resize(700, 900)
+            self.method = "manual"  # final method set on Save
             if hasattr(self, "_progress"):
-                 self._progress.close()
-            QMessageBox.information(self, "Success", "Answer key extracted.")
-            self.accept()
+                self._progress.close()
+            QMessageBox.information(self, "Review Answers", "Answers extracted and pre-filled.\nPlease review and edit if needed, then click Save Answers.")
         finally:
             try:
                 self._worker.quit()
@@ -372,39 +372,18 @@ class AnswerKeyDialog(QDialog):
             except Exception:
                 pass
 
-    def _on_extract_error(self, msg):
-        if hasattr(self, "_progress"):
-            self._progress.close()
-        QMessageBox.warning(self, "Extraction Failed", f"Failed to extract answers:\n{msg}")
-        try:
-            self._worker.quit()
-            self._worker.wait(100)
-        except Exception:
-            pass
-    
-    def cancel_manual_entry(self):
-        self.manual_entry_widget.hide()
-        self.method = None
-        self.resize(700, 800)
-    
-    def save_manual_answers(self):
-        # Build structured answers list based on per-question type
-        mapping_rev = {"--": None, "A": 0, "B": 1, "C": 2, "D": 3}
-        out = []
-        for i, (qtype, widget) in enumerate(self.input_widgets):
+    def populate_manual_inputs(self, structured):
+        """Prefill manual entry widgets from structured answers."""
+        for (qtype, widget), item in zip(self.input_widgets, structured):
+            val = item.get("value") if isinstance(item, dict) else None
             if qtype == "mcq":
-                selected = widget.currentText()
-                out.append({"type": "mcq", "value": mapping_rev.get(selected, None)})
+                # Combo items: ["--", "A", "B", "C", "D"]
+                idx = 0 if val is None else min(max(int(val) + 1, 0), 4)
+                widget.setCurrentIndex(idx)
             elif qtype == "numeric":
-                val = widget.text().strip()
-                out.append({"type": "numeric", "value": val if val != "" else None})
+                widget.setText("" if val in (None, "") else str(val))
             else:  # text
-                val = widget.text().strip()
-                out.append({"type": "text", "value": val if val != "" else None})
-
-        self.answers = out
-        self.method = "manual"
-        self.accept()
+                widget.setText("" if val in (None, "") else str(val))
     
     def skip_answer_key(self):
         reply = QMessageBox.question(
@@ -423,3 +402,37 @@ class AnswerKeyDialog(QDialog):
     def get_answers(self):
         # Returns a structured list of dicts for all types and the chosen method
         return self.answers, self.method
+    
+    def cancel_manual_entry(self):
+        """Hide manual entry and clear method selection."""
+        self.method = None
+        self.manual_entry_widget.hide()
+    def save_manual_answers(self):
+        """Collect manual inputs into self.answers and close dialog."""
+        mapping_idx = {1: 0, 2: 1, 3: 2, 4: 3}  # combo index -> mcq value
+        collected = []
+        for (qtype, widget) in self.input_widgets:
+            if qtype == "mcq":
+                idx = widget.currentIndex()
+                val = mapping_idx.get(idx, None)
+                collected.append({"type": "mcq", "value": val})
+            elif qtype == "numeric":
+                text = widget.text().strip()
+                collected.append({"type": "numeric", "value": text if text else None})
+            else:  # text
+                text = widget.text().strip()
+                collected.append({"type": "text", "value": text if text else None})
+
+        self.answers = collected
+        self.method = "manual"
+        self.accept()
+    def _on_extract_error(self, msg):
+        if hasattr(self, "_progress"):
+            self._progress.close()
+        QMessageBox.warning(self, "Extraction Failed", f"Failed to extract answers:\n{msg}")
+        try:
+            self._worker.quit()
+            self._worker.wait(100)
+        except Exception:
+            pass
+    
