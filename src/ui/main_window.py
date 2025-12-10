@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
             return
 
         EXAM_DEFAULTS = {
-            "JEE Mains":   {"q": 90,  "t": 180, "marks": 4.0, "neg": -1.0},
+            "JEE Mains":   {"q": 75,  "t": 180, "marks": 4.0, "neg": -1.0},
             "JEE Advanced":{"q": 108, "t": 360, "marks": 3.0, "neg": -1.0},
             "NEET":        {"q": 180, "t": 200, "marks": 4.0, "neg": -1.0},
             "Other":       {"q": 50,  "t": 60,  "marks": 1.0, "neg":  0.0},
@@ -237,9 +237,9 @@ class MainWindow(QMainWindow):
             return
 
         EXAM_DEFAULTS = {
-            "JEE Mains":   {"q": 90,  "t": 180, "marks": 4.0, "neg": -1.0},
+            "JEE Mains":   {"q": 75,  "t": 180, "marks": 4.0, "neg": -1.0},
             "JEE Advanced":{"q": 108, "t": 360, "marks": 3.0, "neg": -1.0},
-            "NEET":        {"q": 180, "t": 200, "marks": 4.0, "neg": -1.0},
+            "NEET":        {"q": 180, "t": 180, "marks": 4.0, "neg": -1.0},
             "Other":       {"q": 30,  "t": 45,  "marks": 1.0, "neg":  0.0},
         }
         defs = EXAM_DEFAULTS.get(exam_type, EXAM_DEFAULTS["Other"])
