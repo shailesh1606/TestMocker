@@ -491,6 +491,7 @@ class TestWindow(QWidget):
                 marks_per_correct=self.marks_per_correct,
                 negative_mark=self.negative_mark,
                 exam_type=self.exam_type,
+                pdf_path=self.pdf_path
             )
             self.results_window.show()
         else:

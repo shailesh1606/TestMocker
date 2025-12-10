@@ -7,6 +7,7 @@ from PyQt5.QtGui import QFont, QPixmap
 import math
 from fractions import Fraction
 import io
+from ui.qp_analysis_window import QPAnalysisWindow
 
 # Safe matplotlib (Agg only, no Qt backends, no pyplot)
 MATPLOTLIB_AVAILABLE = False
@@ -151,7 +152,7 @@ def _compare_answers(user_item, correct_item, numeric_tol=1e-3):
 
 class ResultsWindow(QWidget):
     def __init__(self, answers, correct_answers=None, time_taken=0, total_time=60,
-                 marks_per_correct=1.0, negative_mark=0.0, exam_type="Other"):
+                 marks_per_correct=1.0, negative_mark=0.0, exam_type="Other", pdf_path=None):
         super().__init__()
         # Store as provided; normalization happens in comparison and display
         self.answers = answers or []
@@ -162,6 +163,7 @@ class ResultsWindow(QWidget):
         self.marks_per_correct = float(marks_per_correct)
         self.negative_mark = float(negative_mark)
         self.exam_type = exam_type
+        self.pdf_path = pdf_path
         
         self.setWindowTitle('Test Results')
         self.setGeometry(200, 200, 1100, 680)
@@ -470,23 +472,40 @@ class ResultsWindow(QWidget):
         analysis_group.setLayout(analysis_group_layout)
         right_col.addWidget(analysis_group)
 
-        # Bottom buttons spanning full width (attach to left column for consistency)
-        button_layout = QHBoxLayout()
-        close_btn = QPushButton("Close")
-        close_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        close_btn.setStyleSheet("background-color: #e53935; color: white; padding: 10px 20px; border-radius: 5px;")
-        close_btn.clicked.connect(self.close)
-        button_layout.addWidget(close_btn)
-        button_layout.addStretch()
-
         # Assemble columns
         left_container = QtWidget(); left_container.setLayout(left_col)
         right_container = QtWidget(); right_container.setLayout(right_col)
         main_hbox.addWidget(left_container, stretch=3)
         main_hbox.addWidget(right_container, stretch=2)
-        # Add bottom buttons under left column
-        left_col.addLayout(button_layout)
-    
+
+        # Button row under the two columns (so the button appears below Analysis)
+        button_layout = QHBoxLayout()
+        qpa_btn = QPushButton("Qn Paper Analysis")
+        qpa_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        qpa_btn.setStyleSheet("background-color: #1565c0; color: white; padding: 10px 20px; border-radius: 5px;")
+        qpa_btn.clicked.connect(self.open_qp_analysis)
+        button_layout.addWidget(qpa_btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        close_btn.setStyleSheet("background-color: #e53935; color: white; padding: 10px 20px; border-radius: 5px;")
+        close_btn.clicked.connect(self.close)
+        button_layout.addWidget(close_btn)
+
+        button_layout.addStretch()
+        main_hbox.addLayout(button_layout)
+
+    def open_qp_analysis(self):
+        # Pass along what you need; you can extend later with topics/metadata
+        self.qp_window = QPAnalysisWindow(
+            pdf_path=self.pdf_path if hasattr(self, "pdf_path") else None,
+            exam_type=self.exam_type,
+            num_questions=self.num_questions,
+            answers=self.answers,
+            correct_answers=self.correct_answers,
+        )
+        self.qp_window.show()
+
     def format_time(self, seconds):
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
